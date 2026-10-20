@@ -63,7 +63,7 @@ class Scanner:
         for category, keywords in self.config.categories.items():
             for keyword in keywords:
                 try:
-                    pattern = re.compile(re.escape(keyword), flags)
+                    pattern = re.compile(r"\b" + re.escape(keyword) + r"\b", flags)
                     self._patterns[keyword] = (category, pattern)
                 except re.error as e:
                     logger.warning(f"Invalid keyword pattern '{keyword}': {e}")

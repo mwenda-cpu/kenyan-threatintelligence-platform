@@ -13,3 +13,7 @@ pgdata/
 data/ke_reports/
 *.sqlite
 *.db
+
+# Logs
+*.log
+data/scanner.log

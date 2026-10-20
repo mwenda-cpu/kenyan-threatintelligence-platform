@@ -727,6 +727,7 @@
     .hd-badge--low{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.35)}
     .hd-badge--medium{background:rgba(210,153,34,.15);color:var(--yellow);border:1px solid rgba(210,153,34,.35)}
     .hd-badge--high{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.35)}
+    .hd-badge--nc4{background:rgba(147,51,234,.15);color:#9333ea;border:1px solid rgba(147,51,234,.35)}
     .hd-predictive-score{font-size:2rem;font-weight:800;color:var(--text);line-height:1}
     .hd-predictive-sub{font-size:.7rem;color:var(--muted);margin-top:4px}
     .hd-predictive-card{height:215px;overflow:hidden;display:flex;flex-direction:column}
@@ -6010,13 +6011,15 @@ function switchTab(name, evt) {
     const url   = p.url || p.link || '#';
     const date  = (p.date||p.published||'').slice(0,10);
     const src   = p.source || p.group || 'news';
+    const isNC4 = src === 'NC4 Official';
+    const badgeCls = isNC4 ? 'hd-badge--nc4' : '';
+    const badgeLabel = isNC4 ? 'NC4 Official' : esc(src);
+    const badgeStyle = isNC4 ? 'padding:1px 6px;border-radius:3px;font-size:.6rem;font-weight:700;margin-right:6px' : 'padding:1px 5px;border-radius:3px;background:rgba(88,166,255,.1);color:var(--accent);font-size:.6rem;font-weight:700;margin-right:6px';
     return `<div class="hd-press-item">
       <div class="hd-press-title"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(title)}</a></div>
       <div class="hd-press-meta">
-        <span style="display:inline-block;padding:1px 5px;border-radius:3px;
-                     background:rgba(88,166,255,.1);color:var(--accent);
-                     font-size:.6rem;font-weight:700;margin-right:6px">
-          ${esc(src)}
+        <span class="hd-badge ${badgeCls}" style="${badgeStyle}">
+          ${badgeLabel}
         </span>
         ${esc(date)}
       </div>

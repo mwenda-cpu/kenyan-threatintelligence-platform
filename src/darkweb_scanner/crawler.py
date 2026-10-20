@@ -24,6 +24,16 @@ logger = logging.getLogger(__name__)
 
 ONION_PATTERN = re.compile(r"https?://[a-z2-7]{16,56}\.onion", re.IGNORECASE)
 
+# ── URL blocklist: junk / legal / search-engine pages never worth crawling ─────
+BLOCKED_URL_PARTS = (
+    "ahmia.fi",
+    "juhanurmihxlp",          # Ahmia .onion
+    "/terms", "/privacy", "/about", "/faq", "/contact", "/login",
+    "/register", "/signin", "/search", "/cookie", "/sitemap",
+    "torch", "darksearch",
+    "duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion",
+)
+
 
 @dataclass
 class CrawlResult:
@@ -81,6 +91,10 @@ class Crawler:
     def _should_crawl(self, url: str, origin_domain: str) -> bool:
         normalized = self._normalize_url(url)
         if normalized in self._visited:
+            return False
+        # Discard junk / legal / search-engine URLs immediately.
+        url_lower = normalized.lower()
+        if any(part in url_lower for part in BLOCKED_URL_PARTS):
             return False
         domain = self._get_domain(url)
         if not domain.endswith(".onion"):

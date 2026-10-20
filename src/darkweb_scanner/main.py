@@ -11,7 +11,7 @@ from pathlib import Path
 import click
 
 from .alerting import Alerter
-from .crawler import CrawlConfig, Crawler
+from .crawler import BLOCKED_URL_PARTS, CrawlConfig, Crawler
 from .scanner import KeywordConfig, Scanner
 from .storage import Storage
 from .tor_client import create_tor_client
@@ -130,6 +130,23 @@ async def run_scan(
             hits = scanner.scan(url=page.url, text=page.text, depth=page.depth)
 
             for hit in hits:
+                # ── URL blocklist: never save hits from junk / legal / search pages ──
+                hit_url_lower = (hit.url or "").lower()
+                if any(part in hit_url_lower for part in BLOCKED_URL_PARTS):
+                    continue
+
+                # ── ML predictor: discard low-threat hits (score < 40) ──
+                hit_text = (hit.context or "") + " " + (hit.keyword or "")
+                try:
+                    from .dashboard.predictor import calculate_threat_score
+                    threat_score = calculate_threat_score(hit_text)
+                    if threat_score < 40:
+                        continue
+                except Exception:
+                    # If the predictor can't be imported/scored, fall back to saving
+                    # the hit (defensive: never break the crawl on scoring errors).
+                    pass
+
                 hit_id = storage.save_hit(
                     url=hit.url,
                     keyword=hit.keyword,
