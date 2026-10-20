@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment (API KEYS!)
+.env
+*.env
+
+# Data & Database (Don't track large PDFs or local DBs)
+pgdata/
+data/ke_reports/
+*.sqlite
+*.db

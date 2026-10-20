@@ -1,0 +1,135 @@
+keywords:
+  # ── Government e-services ──
+  eCitizen:      {severity: critical, category: government}
+  IFMIS:         {severity: critical, category: government}
+  "Huduma Centre": {severity: high, category: government}
+  iTax:          {severity: critical, category: government}
+  KRA:           {severity: critical, category: government}
+  "KRA PIN":     {severity: high, category: identifier}
+  NTSA:          {severity: high, category: government}
+  TIMs:          {severity: high, category: government}
+  Nemis:         {severity: high, category: government}
+  IPRS:          {severity: critical, category: government}
+  ePermit:       {severity: high, category: government}
+  ePassport:     {severity: high, category: government}
+  SHA:           {severity: high, category: government}
+  NHIF:          {severity: high, category: identifier}
+  NSSF:          {severity: high, category: identifier}
+  "Huduma Namba": {severity: high, category: identifier}
+
+  # ── Government MDAs ──
+  "National Treasury": {severity: high, category: government}
+  "Ministry of Health": {severity: medium, category: government}
+  "Ministry of Interior": {severity: high, category: government}
+  "Ministry of ICT": {severity: medium, category: government}
+  "Ministry of Defence": {severity: high, category: government}
+  "Kenya Defence Forces": {severity: critical, category: government}
+  "National Intelligence Service": {severity: critical, category: government}
+
+  # ── Regulators ──
+  "Central Bank of Kenya": {severity: critical, category: regulator}
+  CBK:           {severity: critical, category: regulator}
+  "Capital Markets Authority": {severity: high, category: regulator}
+  "CMA Kenya":   {severity: high, category: regulator}
+  SASRA:         {severity: high, category: regulator}
+  "Financial Reporting Centre": {severity: high, category: regulator}
+
+  # ── Banks ──
+  KCB:           {severity: critical, category: bank}
+  "Kenya Commercial Bank": {severity: critical, category: bank}
+  "Equity Bank": {severity: critical, category: bank}
+  "Equity Group": {severity: critical, category: bank}
+  "Co-operative Bank": {severity: critical, category: bank}
+  CoopBank:      {severity: critical, category: bank}
+  NCBA:          {severity: critical, category: bank}
+  "Absa Kenya":  {severity: high, category: bank}
+  "Stanbic Bank": {severity: high, category: bank}
+  "Standard Chartered Kenya": {severity: high, category: bank}
+  "DTB Kenya":   {severity: high, category: bank}
+  "Diamond Trust Bank": {severity: high, category: bank}
+  "I&M Bank":    {severity: high, category: bank}
+  "Family Bank": {severity: medium, category: bank}
+  "Prime Bank":  {severity: medium, category: bank}
+  "HF Group":    {severity: medium, category: bank}
+  "National Bank of Kenya": {severity: medium, category: bank}
+  NBK:           {severity: medium, category: bank}
+  Postbank:      {severity: medium, category: bank}
+
+  # ── Fintech & mobile money ──
+  "M-Pesa":      {severity: critical, category: fintech}
+  Mpesa:         {severity: critical, category: fintech}
+  Safaricom:     {severity: critical, category: telco}
+  "Airtel Money": {severity: high, category: fintech}
+  "Airtel Kenya": {severity: high, category: telco}
+  "Telkom Kenya": {severity: medium, category: telco}
+  Equitel:       {severity: high, category: fintech}
+  Fuliza:        {severity: high, category: fintech}
+  "M-Shwari":    {severity: high, category: fintech}
+  "KCB M-Pesa":  {severity: high, category: fintech}
+  Pesalink:      {severity: high, category: fintech}
+  Cellulant:     {severity: medium, category: fintech}
+  Pesapal:       {severity: medium, category: fintech}
+
+  # ── SACCOs ──
+  "Stima SACCO": {severity: medium, category: sacco}
+  "Mwalimu SACCO": {severity: medium, category: sacco}
+  "Kenya Police SACCO": {severity: medium, category: sacco}
+  "Harambee SACCO": {severity: medium, category: sacco}
+  "Unaitas SACCO": {severity: medium, category: sacco}
+
+  # ── Threat actors ──
+  LockBit:       {severity: critical, category: threat_actor}
+  ALPHV:         {severity: critical, category: threat_actor}
+  BlackCat:      {severity: critical, category: threat_actor}
+  Akira:         {severity: high, category: threat_actor}
+  RansomHub:     {severity: high, category: threat_actor}
+  BianLian:      {severity: high, category: threat_actor}
+  Clop:          {severity: high, category: threat_actor}
+  Cl0p:          {severity: high, category: threat_actor}
+  Medusa:        {severity: medium, category: threat_actor}
+  "Hunters International": {severity: high, category: threat_actor}
+  Qilin:         {severity: high, category: threat_actor}
+  "Black Basta": {severity: high, category: threat_actor}
+  DragonForce:   {severity: high, category: threat_actor}
+  "Anonymous Sudan": {severity: critical, category: threat_actor}
+  KillNet:       {severity: high, category: threat_actor}
+  MuddyWater:    {severity: high, category: threat_actor}
+  APT39:         {severity: high, category: threat_actor}
+  Kimsuky:       {severity: high, category: threat_actor}
+
+  # ── Geography ──
+  Kenya:         {severity: high, category: geography}
+  Nairobi:       {severity: high, category: geography}
+  Mombasa:       {severity: medium, category: geography}
+  Kisumu:        {severity: medium, category: geography}
+  Nakuru:        {severity: medium, category: geography}
+  Eldoret:       {severity: low, category: geography}
+  "East Africa": {severity: medium, category: geography}
+  Tanzania:      {severity: low, category: geography}
+  Uganda:        {severity: low, category: geography}
+  Rwanda:        {severity: low, category: geography}
+
+  # ── National CSIRT ──
+  "KE-CIRT":     {severity: critical, category: csirt}
+  "KE-CIRT/CC":  {severity: critical, category: csirt}
+  "Communications Authority": {severity: high, category: csirt}
+  "CA Kenya":    {severity: high, category: csirt}
+  "BS-SOC":      {severity: high, category: csirt}
+
+  # ── Threat types ──
+  "mobile banking fraud": {severity: high, category: threat_type}
+  "SIM swap":    {severity: critical, category: threat_type}
+  "SIM-swap":    {severity: critical, category: threat_type}
+  "card fraud":  {severity: high, category: threat_type}
+  "ATM fraud":   {severity: high, category: threat_type}
+  "phishing Kenya": {severity: high, category: threat_type}
+  BEC:           {severity: high, category: threat_type}
+  DDoS:          {severity: high, category: threat_type}
+  "system intrusion": {severity: high, category: threat_type}
+  "malware Kenya": {severity: high, category: threat_type}
+
+  # ── Domain patterns ──
+  ".go.ke":      {severity: high, category: domain}
+  ".ac.ke":      {severity: medium, category: domain}
+  ".co.ke":      {severity: medium, category: domain}
+  ".or.ke":      {severity: low, category: domain}

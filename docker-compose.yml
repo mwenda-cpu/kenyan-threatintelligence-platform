@@ -1,0 +1,121 @@
+services:
+  # ── Tor daemon ──────────────────────────────────────────────────────────────
+  tor:
+    build:
+      context: ./docker/tor
+    restart: unless-stopped
+    volumes:
+      - tor_data:/var/lib/tor
+    networks:
+      - scanner_net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "9050"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=darkweb_scanner
+      - POSTGRES_USER=scanner
+      - POSTGRES_PASSWORD=root
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - scanner_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scanner -d darkweb_scanner"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Scanner / crawler ───────────────────────────────────────────────────────
+  scanner:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    restart: "no"
+    depends_on:
+      tor:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./config:/app/config:ro
+      - app_data:/app/data
+    networks:
+      - scanner_net
+    command: ["python", "-m", "darkweb_scanner.main", "scan"]
+    profiles:
+      - scan
+
+  # ── Dashboard ───────────────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - tor
+      - postgres
+    env_file:
+      - .env
+    volumes:
+      - ./config:/app/config:ro
+      - ./app_data:/app/data
+      - ./src:/app/src
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./scripts:/app/scripts
+    expose:
+      - "8080"
+    networks:
+      - scanner_net
+    command: ["python", "-m", "darkweb_scanner.dashboard.app"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Nginx SSL reverse proxy ─────────────────────────────────────────────────
+  nginx:
+    build:
+      context: ./docker/nginx
+    restart: unless-stopped
+    depends_on:
+      - dashboard
+    environment:
+      - DOMAIN=${DOMAIN:-}
+      - SSL_EMAIL=${SSL_EMAIL:-}
+      - WWW_DOMAIN=${WWW_DOMAIN:-}
+      - THREATWATCH_DOMAIN=threatwatch.osintph.info
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - nginx_certs:/etc/nginx/certs
+      - letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+      - ./www:/var/www/osintph-www:ro
+      - ./www-threatwatch:/var/www/threatwatch:ro
+    networks:
+      - scanner_net
+
+  
+volumes:
+  tor_data:
+  app_data:
+  nginx_certs:
+  letsencrypt:
+  certbot_webroot:
+  pg_data:
+
+networks:
+  scanner_net:
+    driver: bridge

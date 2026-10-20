@@ -1,0 +1,378 @@
+keywords:
+  .ac.ke:
+    category: domain
+    severity: medium
+  .co.ke:
+    category: domain
+    severity: medium
+  .go.ke:
+    category: domain
+    severity: high
+  .or.ke:
+    category: domain
+    severity: low
+  ALPHV:
+    category: threat_actor
+    severity: critical
+  APT39:
+    category: threat_actor
+    severity: high
+  ATM fraud:
+    category: threat_type
+    severity: high
+  Absa Kenya:
+    category: bank
+    severity: high
+  Airtel Kenya:
+    category: telco
+    severity: high
+  Airtel Money:
+    category: fintech
+    severity: high
+  Akira:
+    category: threat_actor
+    severity: high
+  Anonymous Sudan:
+    category: threat_actor
+    severity: critical
+  BEC:
+    category: threat_type
+    severity: high
+  BS-SOC:
+    category: csirt
+    severity: high
+  BianLian:
+    category: threat_actor
+    severity: high
+  Black Basta:
+    category: threat_actor
+    severity: high
+  BlackCat:
+    category: threat_actor
+    severity: critical
+  CA Kenya:
+    category: csirt
+    severity: high
+  CBK:
+    category: regulator
+    severity: critical
+  CMA Kenya:
+    category: regulator
+    severity: high
+  Capital Markets Authority:
+    category: regulator
+    severity: high
+  Cellulant:
+    category: fintech
+    severity: medium
+  Central Bank of Kenya:
+    category: regulator
+    severity: critical
+  Cl0p:
+    category: threat_actor
+    severity: high
+  Clop:
+    category: threat_actor
+    severity: high
+  Co-operative Bank:
+    category: bank
+    severity: critical
+  Communications Authority:
+    category: csirt
+    severity: high
+  CoopBank:
+    category: bank
+    severity: critical
+  DDoS:
+    category: threat_type
+    severity: high
+  DTB Kenya:
+    category: bank
+    severity: high
+  Diamond Trust Bank:
+    category: bank
+    severity: high
+  DragonForce:
+    category: threat_actor
+    severity: high
+  East Africa:
+    category: geography
+    severity: medium
+  Eldoret:
+    category: geography
+    severity: low
+  Equitel:
+    category: fintech
+    severity: high
+  Equity Bank:
+    category: bank
+    severity: critical
+  Equity Group:
+    category: bank
+    severity: critical
+  Family Bank:
+    category: bank
+    severity: medium
+  Financial Reporting Centre:
+    category: regulator
+    severity: high
+  Fuliza:
+    category: fintech
+    severity: high
+  HF Group:
+    category: bank
+    severity: medium
+  Harambee SACCO:
+    category: sacco
+    severity: medium
+  Huduma Centre:
+    category: government
+    severity: high
+  Huduma Namba:
+    category: identifier
+    severity: high
+  Hunters International:
+    category: threat_actor
+    severity: high
+  I&M Bank:
+    category: bank
+    severity: high
+  IFMIS:
+    category: government
+    severity: critical
+  IPRS:
+    category: government
+    severity: critical
+  KCB:
+    category: bank
+    severity: critical
+  KCB M-Pesa:
+    category: fintech
+    severity: high
+  KE-CIRT:
+    category: csirt
+    severity: critical
+  KE-CIRT/CC:
+    category: csirt
+    severity: critical
+  KRA:
+    category: government
+    severity: critical
+  KRA PIN:
+    category: identifier
+    severity: high
+  Kenya:
+    category: geography
+    severity: high
+  Kenya Commercial Bank:
+    category: bank
+    severity: critical
+  Kenya Defence Forces:
+    category: government
+    severity: critical
+  Kenya Police SACCO:
+    category: sacco
+    severity: medium
+  KillNet:
+    category: threat_actor
+    severity: high
+  Kimsuky:
+    category: threat_actor
+    severity: high
+  Kisumu:
+    category: geography
+    severity: medium
+  LockBit:
+    category: threat_actor
+    severity: critical
+  M-Pesa:
+    category: fintech
+    severity: critical
+  M-Shwari:
+    category: fintech
+    severity: high
+  Medusa:
+    category: threat_actor
+    severity: medium
+  Ministry of Defence:
+    category: government
+    severity: high
+  Ministry of Health:
+    category: government
+    severity: medium
+  Ministry of ICT:
+    category: government
+    severity: medium
+  Ministry of Interior:
+    category: government
+    severity: high
+  Mombasa:
+    category: geography
+    severity: medium
+  Mpesa:
+    category: fintech
+    severity: critical
+  MuddyWater:
+    category: threat_actor
+    severity: high
+  Mwalimu SACCO:
+    category: sacco
+    severity: medium
+  NBK:
+    category: bank
+    severity: medium
+  NCBA:
+    category: bank
+    severity: critical
+  NHIF:
+    category: identifier
+    severity: high
+  NSSF:
+    category: identifier
+    severity: high
+  NTSA:
+    category: government
+    severity: high
+  Nairobi:
+    category: geography
+    severity: high
+  Nakuru:
+    category: geography
+    severity: medium
+  National Bank of Kenya:
+    category: bank
+    severity: medium
+  National Intelligence Service:
+    category: government
+    severity: critical
+  National Treasury:
+    category: government
+    severity: high
+  Nemis:
+    category: government
+    severity: high
+  Pesalink:
+    category: fintech
+    severity: high
+  Pesapal:
+    category: fintech
+    severity: medium
+  Postbank:
+    category: bank
+    severity: medium
+  Prime Bank:
+    category: bank
+    severity: medium
+  Qilin:
+    category: threat_actor
+    severity: high
+  RansomHub:
+    category: threat_actor
+    severity: high
+  Rwanda:
+    category: geography
+    severity: low
+  SASRA:
+    category: regulator
+    severity: high
+  SHA:
+    category: government
+    severity: high
+  SIM swap:
+    category: threat_type
+    severity: critical
+  SIM-swap:
+    category: threat_type
+    severity: critical
+  Safaricom:
+    category: telco
+    severity: critical
+  Stanbic Bank:
+    category: bank
+    severity: high
+  Standard Chartered Kenya:
+    category: bank
+    severity: high
+  Stima SACCO:
+    category: sacco
+    severity: medium
+  TIMs:
+    category: government
+    severity: high
+  Tanzania:
+    category: geography
+    severity: low
+  Telkom Kenya:
+    category: telco
+    severity: medium
+  Uganda:
+    category: geography
+    severity: low
+  Unaitas SACCO:
+    category: sacco
+    severity: medium
+  card fraud:
+    category: threat_type
+    severity: high
+  custom:
+  - email dump
+  eCitizen:
+    category: government
+    severity: critical
+  ePassport:
+    category: government
+    severity: high
+  ePermit:
+    category: government
+    severity: high
+  iTax:
+    category: government
+    severity: critical
+  malware Kenya:
+    category: threat_type
+    severity: high
+  mobile banking fraud:
+    category: threat_type
+    severity: high
+  phishing Kenya:
+    category: threat_type
+    severity: high
+  system intrusion:
+    category: threat_type
+    severity: high
+  threat-actors:
+  - muddywater
+  - static kitten
+  - mango sandstorm
+  - seedworm
+  - apt39
+  - chafer
+  - remexi
+  - itg07
+  - apt35
+  - silent librarian
+  - charming kitten
+  - phosphorus
+  - kimsuky
+  - velvet chollima
+  - emerald sleet
+  - thallium
+  - lockbit
+  - lockbit3
+  - lockbit black
+  - dragonforce
+  - dragon force
+  - alphv
+  - blackcat
+  - noberus
+  - akira
+  - storm-1567
+  - hunters international
+  - hunters
+  - qilin
+  - agenda ransomware
+  - silence
+  - whisper spider
+  - anonymous sudan
+  - storm-1359
+  - killnet
