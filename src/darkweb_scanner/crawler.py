@@ -54,8 +54,15 @@ class CrawlConfig:
     delay_max: float = float(os.getenv("CRAWL_DELAY_MAX", "8"))
     rotate_circuit_every: int = int(os.getenv("ROTATE_CIRCUIT_EVERY", "50"))
     max_pages_per_domain: int = int(os.getenv("MAX_PAGES_PER_DOMAIN", "100"))
+    max_pages_per_crawl: int = int(os.getenv("MAX_PAGES_PER_CRAWL", "50"))
     stay_on_domain: bool = os.getenv("STAY_ON_DOMAIN", "false").lower() == "true"
     allowed_content_types: tuple = ("text/html",)
+
+    # Pagination URL patterns to follow for historical data.
+    pagination_patterns: tuple = (
+        "?page=", "&page=", "?p=", "&p=",
+        "/page/", "/p/", "/archive", "/archives",
+    )
 
 
 class Crawler:
@@ -65,6 +72,7 @@ class Crawler:
         self._visited: Set[str] = set()
         self._domain_counts: dict[str, int] = {}
         self._pages_crawled: int = 0
+        self._pagination_pages_crawled: int = 0
         self._semaphore: Optional[asyncio.Semaphore] = None
 
     def _normalize_url(self, url: str) -> str:
@@ -87,6 +95,11 @@ class Crawler:
 
     def _get_domain(self, url: str) -> str:
         return urlparse(url).netloc
+
+    def _is_pagination_url(self, url: str) -> bool:
+        """True when a URL looks like a pagination/archive page."""
+        url_lower = url.lower()
+        return any(p in url_lower for p in self.config.pagination_patterns)
 
     def _should_crawl(self, url: str, origin_domain: str) -> bool:
         normalized = self._normalize_url(url)
@@ -164,17 +177,22 @@ class Crawler:
     async def crawl(self, seed_urls: list[str]) -> AsyncIterator[CrawlResult]:
         """BFS crawl from seed URLs, yielding CrawlResult for each page."""
         self._semaphore = asyncio.Semaphore(self.config.max_concurrent)
-        queue: deque[tuple[str, int, str]] = deque()  # (url, depth, origin_domain)
+        queue: deque[tuple[str, int, str, bool]] = deque()  # (url, depth, origin_domain, is_pagination)
 
         for url in seed_urls:
             normalized = self._normalize_url(url)
             domain = self._get_domain(normalized)
-            queue.append((normalized, 0, domain))
+            queue.append((normalized, 0, domain, False))
             self._visited.add(normalized)
 
         stop_flag = pathlib.Path(os.environ.get("DATA_DIR", "/app/data")) / "crawl.stop"
 
         while queue:
+            # Enforce global page limit per crawl.
+            if self._pages_crawled >= self.config.max_pages_per_crawl:
+                logger.info(f"Max pages per crawl ({self.config.max_pages_per_crawl}) reached — stopping.")
+                break
+
             # Check for stop signal from dashboard
             if stop_flag.exists():
                 logger.info("Stop flag detected — halting crawl gracefully.")
@@ -188,11 +206,11 @@ class Crawler:
             while queue and len(batch) < self.config.max_concurrent:
                 batch.append(queue.popleft())
 
-            tasks = [self._crawl_url(url, depth) for url, depth, _ in batch]
+            tasks = [self._crawl_url(url, depth) for url, depth, _, _ in batch]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for i, result in enumerate(results):
-                url, depth, origin_domain = batch[i]
+                url, depth, origin_domain, is_pagination = batch[i]
 
                 if isinstance(result, Exception):
                     logger.error(f"Unhandled exception crawling {url}: {result}")
@@ -200,17 +218,28 @@ class Crawler:
 
                 domain = self._get_domain(url)
                 self._domain_counts[domain] = self._domain_counts.get(domain, 0) + 1
+                self._pages_crawled += 1
+                if is_pagination:
+                    self._pagination_pages_crawled += 1
 
                 yield result
+
+                # Enforce pagination page limit (max 10 pagination pages per crawl).
+                if self._pagination_pages_crawled >= 10:
+                    logger.info("Max pagination pages (10) reached — no more pagination links will be followed.")
 
                 # enqueue discovered links
                 if depth < self.config.max_depth and not result.error:
                     for link in result.links:
                         if self._should_crawl(link, origin_domain):
+                            is_pag = self._is_pagination_url(link)
+                            # Don't enqueue more pagination links if we've hit the limit.
+                            if is_pag and self._pagination_pages_crawled >= 10:
+                                continue
                             self._visited.add(link)
-                            queue.append((link, depth + 1, origin_domain))
+                            queue.append((link, depth + 1, origin_domain, is_pag))
 
-        logger.info(f"Crawl complete. Total pages crawled: {self._pages_crawled}")
+        logger.info(f"Crawl complete. Total pages crawled: {self._pages_crawled} (pagination: {self._pagination_pages_crawled})")
 
     def reset(self):
         self._visited.clear()

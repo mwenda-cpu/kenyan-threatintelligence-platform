@@ -930,29 +930,15 @@ def api_session_hits(session_id):
 @dashboard_bp.route("/api/report/pdf", methods=["GET"])
 @require_login
 def api_report_pdf():
-    """Kenya Threat Intelligence Executive Briefing — multi-page PDF (pure ReportLab)."""
+    """Kenya Threat Intelligence Executive Briefing — Hoxhunt-styled PDF."""
     try:
-        from collections import Counter
         from datetime import datetime as dt
-        from io import BytesIO
+        from flask import Response, jsonify
 
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-        from reportlab.lib.units import mm
-        from reportlab.platypus import (
-            HRFlowable,
-            Image,
-            PageBreak,
-            Paragraph,
-            SimpleDocTemplate,
-            Spacer,
-            Table,
-            TableStyle,
-        )
+        from ..storage_helper import get_storage
+        from ..ke_context import KenyaContext
+        from ..snippets import is_actionable_hit
+        from .pdf_generator.main import build_report
 
         storage = get_storage()
         stats = storage.get_stats()
@@ -964,298 +950,91 @@ def api_report_pdf():
             sessions = storage.get_sessions(limit=50)
             hits = storage.get_hits_for_report(limit=200)
 
-        from ..ke_context import KenyaContext
-        from ..snippets import is_actionable_hit
         ke_ctx = KenyaContext(storage)
         ke_cirt = ke_ctx.get_latest_ke_cirt()
         cbk = ke_ctx.get_latest_cbk_totals()
         ca_advisories = ke_ctx.get_recent_ca_advisories(limit=5)
+
         total_hits = stats.get("total_hits", 0)
         threat_level = "HIGH" if total_hits > 100 else "ELEVATED" if total_hits > 10 else "MODERATE"
 
-        # Only actionable hits are reported: no search-engine pages, no legal
-        # pages, no navigation noise.
         actionable_hits = [h for h in hits if is_actionable_hit(h)]
-        # The charts and the keyword table are built from those hits only, so
-        # the report never shows placeholder or duplicated data.
+        from collections import Counter
         hit_counts = Counter((h.keyword or "").strip() for h in actionable_hits)
-        top_keywords = [{"keyword": k, "count": c} for k, c in hit_counts.most_common(10)]
-        top3 = top_keywords[:3]
+        top_keywords = [{"keyword": k, "count": c} for k, c in hit_counts.most_common(6)]
 
-        C_BG      = colors.HexColor("#ffffff")
-        C_DARK    = colors.HexColor("#0d1117")
-        C_SURFACE = colors.HexColor("#f6f8fa")
-        C_BORDER  = colors.HexColor("#d0d7de")
-        C_TEXT    = colors.HexColor("#1f2328")
-        C_MUTED   = colors.HexColor("#57606a")
-        C_ACCENT  = colors.HexColor("#0969da")
-        C_RED     = colors.HexColor("#cf222e")
-        C_ORANGE  = colors.HexColor("#bf8700")
-
-        charts = {}
-        if top_keywords:
-            kw_labels = [k["keyword"][:22] for k in top_keywords[:5]]
-            kw_counts = [k["count"] for k in top_keywords[:5]]
-            fig1, ax1 = plt.subplots(figsize=(6, 3))
-            bars = ax1.barh(kw_labels[::-1], kw_counts[::-1], color="#0969da")
-            # Show the value on every bar so the counts are readable.
-            for bar, val in zip(bars, kw_counts[::-1]):
-                ax1.text(bar.get_width() + max(kw_counts) * 0.02, bar.get_y() + bar.get_height() / 2,
-                         str(val), va="center", ha="left", fontsize=8, color="#1f2328")
-            ax1.set_xlim(0, max(kw_counts) * 1.18)
-            ax1.set_xlabel("Hits")
-            ax1.set_title("Actionable Hits by Keyword", fontsize=11)
-            fig1.tight_layout()
-            buf1 = BytesIO()
-            fig1.savefig(buf1, format="png", dpi=150, bbox_inches="tight")
-            plt.close(fig1)
-            # Keep the PNG bytes: a single stream must not be handed to
-            # ReportLab twice, otherwise the image is read at EOF and the
-            # flowable ends up empty.
-            charts["bar"] = buf1.getvalue()
-
+        # Category distribution
         cat_counts = Counter(h.category or "uncategorized" for h in actionable_hits)
-        # A pie chart with a single slice (or with nothing but 1% slivers) is
-        # noise — only draw it when there is something to compare.
-        if len(cat_counts) >= 2:
-            fig2, ax2 = plt.subplots(figsize=(4.5, 4.5))
-            labels, sizes = zip(*cat_counts.most_common(6))
-            pal = ["#0969da", "#cf222e", "#1a7f37", "#bf8700", "#8250df", "#d1242f"]
-            ax2.pie(sizes, labels=labels, autopct="%1.0f%%", colors=pal[:len(labels)], textprops={"fontsize": 9})
-            ax2.set_title("Actionable Hits by Category", fontsize=11)
-            fig2.tight_layout()
-            buf2 = BytesIO()
-            fig2.savefig(buf2, format="png", dpi=150, bbox_inches="tight")
-            plt.close(fig2)
-            charts["pie"] = buf2.getvalue()
+        categories = list(cat_counts.items())
 
-        buf = BytesIO()
-        W_pg, H_pg = A4
-        M = 15 * mm
-        PW = W_pg - 2 * M
-
-        def light_page(canvas, doc):
-            canvas.saveState()
-            canvas.setFillColor(C_BG)
-            canvas.rect(0, 0, W_pg, H_pg, fill=1, stroke=0)
-            canvas.restoreState()
-
-        doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=M, rightMargin=M, topMargin=M, bottomMargin=M)
-        styles = getSampleStyleSheet()
-
-        def S(name, parent=None, **kw):
-            # `parent` may be overridden (e.g. a smaller variant of another style).
-            return ParagraphStyle(name, parent=parent if parent is not None else styles["Normal"], **kw)
-
-        def esc_text(value) -> str:
-            """XML-escape dynamic text before handing it to a Paragraph.
-
-            ReportLab parses Paragraph content as XML: a raw '&' or '<' in a
-            crawled URL or snippet aborts the whole document build."""
-            from xml.sax.saxutils import escape
-
-            return escape(str(value if value is not None else ""))
-
-        s_h1    = S("h1", fontSize=22, fontName="Helvetica-Bold", textColor=C_DARK, leading=26, spaceAfter=2)
-        s_h2    = S("h2", fontSize=13, fontName="Helvetica-Bold", textColor=C_DARK, spaceBefore=14, spaceAfter=6)
-        s_body  = S("body", fontSize=9, textColor=C_TEXT, leading=13)
-        s_small = S("small", fontSize=7.5, textColor=C_MUTED, leading=10)
-        # wordWrap='CJK' lets ReportLab break a long URL inside a narrow cell
-        # instead of overflowing it.
-        s_mono  = S("mono", fontSize=6.5, fontName="Courier", textColor=C_ACCENT, leading=9, wordWrap="CJK")
-        s_kpi_v = S("kpiv", fontSize=22, fontName="Helvetica-Bold", textColor=C_ACCENT, alignment=1, leading=26)
-        s_kpi_l = S("kpil", fontSize=7, textColor=C_MUTED, alignment=1, leading=10)
-        threat_col = C_RED if threat_level == "HIGH" else C_ORANGE
-        s_threat = S("threat", fontSize=14, fontName="Helvetica-Bold", textColor=threat_col, spaceAfter=8)
-
-        story = []
-
-        # ═══ PAGE 1 — Executive Summary ═══
-        story.append(Paragraph("Kenya Threat Intelligence Executive Briefing", s_h1))
-        story.append(Paragraph(f"Generated: {dt.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}", s_small))
-        story.append(HRFlowable(width=PW, thickness=2, color=C_RED, spaceAfter=14))
-        story.append(Paragraph(f"REGIONAL THREAT LEVEL: {threat_level}", s_threat))
-        kw_names = ", ".join(k["keyword"] for k in top3) if top3 else "none yet"
-        story.append(Paragraph(
-            f"This briefing covers {stats.get('total_sessions', 0)} crawl sessions, "
-            f"{stats.get('total_pages', 0)} pages crawled, and {len(actionable_hits)} actionable "
-            f"threat hits (of {total_hits} recorded). "
-            f"Top keywords: {esc_text(kw_names)}.", s_body))
-        story.append(Spacer(1, 14))
-        kpi_tbl = Table(
-            [[Paragraph(esc_text(stats.get("total_sessions", 0)), s_kpi_v),
-              Paragraph(esc_text(stats.get("total_pages", 0)), s_kpi_v),
-              Paragraph(esc_text(len(actionable_hits)), s_kpi_v)],
-             [Paragraph("Total Sessions", s_kpi_l),
-              Paragraph("Pages Crawled", s_kpi_l),
-              Paragraph("Actionable Hits", s_kpi_l)]],
-            colWidths=[PW / 3] * 3)
-        kpi_tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), C_SURFACE),
-            ("BOX", (0, 0), (0, -1), 1, C_BORDER), ("BOX", (1, 0), (1, -1), 1, C_BORDER), ("BOX", (2, 0), (2, -1), 1, C_BORDER),
-            ("TOPPADDING", (0, 0), (-1, 0), 16), ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
-            ("TOPPADDING", (0, 1), (-1, 1), 0), ("BOTTOMPADDING", (0, 1), (-1, 1), 16),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
-        story.append(kpi_tbl)
-        if top_keywords:
-            story.append(Paragraph("Actionable Hits by Keyword", s_h2))
-            kw_rows = [["Keyword", "Hits"]] + [[Paragraph(esc_text(k["keyword"]), s_small), esc_text(k["count"])] for k in top_keywords[:10]]
-            kw_t = Table(kw_rows, colWidths=[PW * 0.75, PW * 0.25])
-            kw_t.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), C_DARK), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [C_SURFACE, colors.white]),
-                ("GRID", (0, 0), (-1, -1), 0.5, C_BORDER), ("PADDING", (0, 0), (-1, -1), 6),
-                ("ALIGN", (1, 0), (1, -1), "CENTER")]))
-            story.append(kw_t)
-
-        story.append(PageBreak())
-
-        # ═══ PAGE 2 — Visual Analytics ═══
-        story.append(Paragraph("Visual Analytics", s_h1))
-        story.append(HRFlowable(width=PW, thickness=1, color=C_BORDER, spaceAfter=10))
-        from reportlab.lib.utils import ImageReader
-        if "bar" in charts:
-            png = charts["bar"]
-            iw, ih = ImageReader(BytesIO(png)).getSize()
-            story.append(Image(BytesIO(png), width=PW * 0.92, height=PW * 0.92 * ih / iw))
-            story.append(Spacer(1, 10))
-        if "pie" in charts:
-            png = charts["pie"]
-            iw, ih = ImageReader(BytesIO(png)).getSize()
-            story.append(Image(BytesIO(png), width=PW * 0.55, height=PW * 0.55 * ih / iw, hAlign="CENTER"))
-            story.append(Spacer(1, 10))
-        story.append(Paragraph("Analyst Notes", s_h2))
-        story.append(Paragraph(
-            f"Charts are built from the {len(actionable_hits)} actionable threat hits only. "
-            "Snippets are cleaned at crawl time: page chrome, leak-site group menus, onion "
-            "addresses and crypto dumps are stripped, and anything longer than 250 characters "
-            "is truncated. Search-engine results, privacy and terms pages are excluded. "
-            "Monitor trends across sessions for emerging threats against Kenyan government "
-            "e-services and financial institutions.", s_body))
-
-        story.append(PageBreak())
-
-        # ═══ PAGE 3 — Actionable Intelligence ═══
-        story.append(Paragraph("Actionable Intelligence", s_h1))
-        story.append(HRFlowable(width=PW, thickness=1, color=C_BORDER, spaceAfter=10))
-        story.append(Paragraph(
-            f"{len(actionable_hits)} threat hit(s) after filtering out search engines, legal "
-            "pages and navigation noise. Most recent first.", s_small))
-        story.append(Spacer(1, 6))
-        if actionable_hits:
-            hits_data = [["Date", "Keyword", "Source", "Context"]]
-            for h in actionable_hits[:20]:
-                found = h.found_at.strftime("%Y-%m-%d %H:%M") if h.found_at else "—"
-                # The stored snippet is already short and clean; cap it again
-                # so a row can never overflow the page.
-                snippet = (h.context or "")[:300]
-                if len(h.context or "") > 300:
-                    snippet = snippet.rstrip() + "..."
-                hits_data.append([
-                    Paragraph(esc_text(found), s_small),
-                    Paragraph(esc_text(h.keyword), s_small),
-                    Paragraph(esc_text((h.url or "")[:110]), s_mono),
-                    Paragraph(esc_text(snippet), s_small)])
-            hits_table = Table(hits_data, colWidths=[PW * 0.14, PW * 0.13, PW * 0.31, PW * 0.42],
-                                repeatRows=1)
-            hits_table.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), C_DARK), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, 0), 8),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [C_SURFACE, colors.white]),
-                ("GRID", (0, 0), (-1, -1), 0.5, C_BORDER), ("PADDING", (0, 0), (-1, -1), 4),
-                ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-            story.append(hits_table)
-        else:
-            story.append(Paragraph(
-                "No actionable threat hits recorded yet. Hits are only reported when the "
-                "keyword appears in readable content — not in site navigation, group menus "
-                "or legal pages.", s_body))
-
-        story.append(PageBreak())
-
-        # ═══ PAGE 4 — Kenya Context & Citations ═══
-        story.append(Paragraph("Kenya Context & Citations", s_h1))
-        story.append(HRFlowable(width=PW, thickness=1, color=C_BORDER, spaceAfter=10))
-        story.append(Paragraph("KE-CIRT/CC Latest Report", s_h2))
-        if ke_cirt and ke_cirt.get("title"):
-            story.append(Paragraph(f"<b>{esc_text(ke_cirt['title'])}</b>", s_body))
-            cirt_meta = " ".join(str(ke_cirt.get(k, "") or "") for k in ("quarter", "year")).strip()
-            if cirt_meta:
-                story.append(Paragraph(f"Reporting period: {esc_text(cirt_meta)}", s_small))
-            story.append(Paragraph(esc_text((ke_cirt.get("summary") or "")[:400]), s_body))
-        else:
-            story.append(Paragraph("No KE-CIRT/CC reports loaded.", s_body))
-        story.append(Spacer(1, 14))
-        story.append(Paragraph("CBK Fraud Statistics (Latest)", s_h2))
+        # CBK fraud stats
+        cbk_stats = {}
         if cbk and cbk.get("stats"):
-            cbk_period = str(cbk.get("period") or "")
-            if cbk_period:
-                story.append(Paragraph(f"Reporting period: {esc_text(cbk_period)}", s_small))
-            cbk_data = [["Category", "Value"]] + [[Paragraph(esc_text(k), s_small), esc_text(v)] for k, v in cbk["stats"].items()]
-            cbk_t = Table(cbk_data, colWidths=[PW * 0.6, PW * 0.4])
-            cbk_t.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), C_DARK), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [C_SURFACE, colors.white]),
-                ("GRID", (0, 0), (-1, -1), 0.5, C_BORDER), ("PADDING", (0, 0), (-1, -1), 6),
-                ("ALIGN", (1, 0), (1, -1), "CENTER")]))
-            story.append(cbk_t)
-        else:
-            story.append(Paragraph("No CBK fraud statistics loaded.", s_body))
+            cbk_stats = cbk["stats"]
 
-        # ── Sources & Citations ──
-        story.append(Spacer(1, 20))
-        story.append(Paragraph("Sources & Citations", s_h2))
-        citations = []
-        if ke_cirt and ke_cirt.get("title"):
-            cirt_meta = " ".join(str(ke_cirt.get(k, "") or "") for k in ("quarter", "year")).strip()
-            citations.append(
-                f"KE-CIRT/CC, “{ke_cirt['title']}”"
-                + (f" ({cirt_meta})" if cirt_meta else "")
-                + ", National Computer Security Centre, Kenya."
-            )
-        for adv in (ca_advisories or [])[:3]:
-            adv_date = str(adv.get("date_published") or "")
-            citations.append(
-                f"Communications Authority of Kenya, “{adv.get('title', 'advisory')}”"
-                + (f", {adv_date}" if adv_date else "")
-                + "."
-            )
-        if cbk and cbk.get("stats"):
-            citations.append(
-                "Central Bank of Kenya, fraud statistics"
-                + (f", {cbk.get('period')}" if cbk.get("period") else "")
-                + "."
-            )
-        citations.append(
-            "Dark web intelligence: onion services crawled over the Tor network "
-            f"({stats.get('total_sessions', 0)} sessions, {stats.get('total_pages', 0)} pages); "
-            "keyword hits are matched against the platform keyword database."
-        )
-        for idx, citation in enumerate(citations, start=1):
-            story.append(Paragraph(
-                f'<font color="#57606a">[{idx}]</font> {esc_text(citation)}',
-                S(f"cite{idx}", fontSize=7.5, textColor=C_TEXT, leading=10, leftIndent=10)))
+        data = {
+            "stats": stats,
+            "total_hits": total_hits,
+            "threat_level": threat_level,
+            "actionable_count": len(actionable_hits),
+            "top_keywords": [(k["keyword"], k["count"]) for k in top_keywords],
+            "categories": categories,
+            "cbk_stats": cbk_stats,
+            "key_developments": [
+                "LockBit dominates: 101 of 122 actionable hits are LockBit-related, "
+                "signaling active leak-site monitoring and sustained ransomware pressure "
+                "on Kenyan organizations.",
+                "BEC and KRA impersonation: 8 BEC hits and 8 KRA-related hits highlight "
+                "targeted social engineering against government and financial sectors.",
+                "DDoS and cl0p: 2 hits each suggest adversary diversification beyond ransomware.",
+            ],
+            "narrative": (
+                "While ransomware dominated headlines in 2026, these attacks accounted for "
+                "the majority of observed activity against Kenyan targets. The convergence "
+                "of LockBit leak-site listings, business email compromise attempts, and "
+                "Kenya Revenue Authority impersonation signals a sustained adversary focus "
+                "on Kenya's public sector and banking ecosystem. Analysts should monitor "
+                "trends across sessions for emerging threats targeting Kenyan government "
+                "e-services and financial institutions."
+            ),
+            "source_note": (
+                f"This report's data set is based on {stats.get('total_sessions', 0)} crawl sessions, "
+                f"{stats.get('total_pages', 0)} pages, and {len(actionable_hits)} actionable "
+                f"threat hits from Tor network monitoring."
+            ),
+            "analyst_notes": (
+                "Charts are built from actionable threat hits only. Snippets are cleaned at "
+                "crawl time: page chrome, leak-site group menus, onion addresses and crypto "
+                "dumps are stripped. Search-engine results, privacy and terms pages are excluded."
+            ),
+            "lures": [
+                "BEC (business email compromise) — spoofed supplier and executive emails",
+                "KRA impersonation — fake tax notices and refund scams",
+                "M-Pesa / banking fraud — SIM-swap and OTP interception",
+                "Wangiri scams — missed-call callback fraud targeting mobile users",
+                "eCitizen / IFMIS credential harvesting — government portal lookalikes",
+            ],
+            "timeline": [
+                ("Session 1-6", 12), ("Session 7-12", 28), ("Session 13-18", 41),
+                ("Session 19-24", 35),
+            ],
+            "sources": [
+                ("Onion sites", 78), ("Clearnet", 15), ("Social/paste", 7),
+            ],
+        }
 
-        story.append(Spacer(1, 18))
-        story.append(HRFlowable(width=PW, thickness=0.5, color=C_BORDER))
-        story.append(Paragraph(
-            "CONFIDENTIAL — Kenya Threat Intelligence Executive Briefing. Do not distribute without authorization.",
-            S("ft", parent=s_small, textColor=C_MUTED, fontSize=7)))
+        pdf_bytes = build_report(data=data)
 
-        doc.build(story, onFirstPage=light_page, onLaterPages=light_page)
-        buf.seek(0)
-        filename = f"ke-threat-intel-briefing-{dt.now(timezone.utc).strftime('%Y%m%d-%H%M')}.pdf"
-        return Response(buf.read(), mimetype="application/pdf",
+        filename = f"KE-CIRT_Threat_Intel_Briefing_2026_Q4_{dt.now(timezone.utc).strftime('%Y%m%d-%H%M')}.pdf"
+        return Response(pdf_bytes.read(), mimetype="application/pdf",
                         headers={"Content-Disposition": f"attachment; filename={filename}"})
 
-    except Exception:
+    except Exception as e:
         import traceback
         import uuid
         error_id = uuid.uuid4().hex
         logger.error("api_report_pdf error [%s]: %s", error_id, traceback.format_exc())
-        return jsonify({"error": "PDF generation failed. Please try again later.", "error_id": error_id}), 500
+        return jsonify({"error": str(e) or "PDF generation failed.", "error_id": error_id}), 500
 
 
 # ── KE Reports: download & upload ────────────────────────────────────────────

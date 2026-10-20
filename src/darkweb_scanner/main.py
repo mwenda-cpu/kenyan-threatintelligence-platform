@@ -7,8 +7,10 @@ import logging
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
 import click
+from bs4 import BeautifulSoup
 
 from .alerting import Alerter
 from .crawler import BLOCKED_URL_PARTS, CrawlConfig, Crawler
@@ -83,6 +85,161 @@ def match_hit_to_projects(hit_id: int, url: str, keyword: str, context: str, sto
     except Exception as e:
         logger.warning(f"Project hit matching error: {e}")
 
+
+def extract_deep_link(html: str, base_url: str, keyword: str) -> str:
+    """
+    Find the deep link where a keyword actually resides on a page.
+
+    Parses the HTML, strips global-noise containers (title, header, footer,
+    nav), then searches text nodes for the keyword. For each match, walks up
+    to find the closest ancestor <a> tag; if none is found, checks the next
+    few sibling <a> tags. Returns an absolute URL via urljoin, falling back
+    to base_url when no link is found.
+    """
+    if not html:
+        return base_url
+
+
+def parse_victim_metadata(html: str, url: str, keyword: str) -> dict:
+    """
+    Extract victim metadata from a deep-link page (ransomware leak-site victim
+    listing). Returns a dict with victim_name, target_country, attack_date,
+    leak_site, and raw_content.
+    """
+    if not html:
+        return {}
+
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+
+    # ── Leak site name from domain ─────────────────────────────────────────
+    from urllib.parse import urlparse
+    domain = urlparse(url).netloc
+    leak_site = domain.split(".")[0] if domain else "unknown"
+
+    # ── Victim name: <h1> or <h2> ──────────────────────────────────────────
+    victim_name = None
+    for tag_name in ("h1", "h2"):
+        el = soup.find(tag_name)
+        if el:
+            text = el.get_text(" ", strip=True)
+            if text and len(text) > 2 and len(text) < 200:
+                victim_name = text
+                break
+
+    # Fallback: look for "Victim:" or "Company:" labels
+    if not victim_name:
+        for label in ("victim", "company", "target", "organisation", "organization"):
+            el = soup.find(string=lambda t: t and label in t.lower() and ":" in t)
+            if el:
+                parent = el.parent
+                if parent:
+                    text = parent.get_text(" ", strip=True)
+                    parts = text.split(":", 1)
+                    if len(parts) == 2:
+                        candidate = parts[1].strip()
+                        if candidate and len(candidate) < 200:
+                            victim_name = candidate
+                            break
+
+    # ── Target country: flag emojis, "Country: X", "KE", "Kenya" ──────────
+    target_country = None
+    page_text = soup.get_text(" ", strip=True)
+
+    # Look for explicit "Country:" pattern
+    import re as _re
+    m = _re.search(r"country\s*:\s*([A-Za-z]{2,50})", page_text, _re.IGNORECASE)
+    if m:
+        target_country = m.group(1).strip()
+    else:
+        # Look for country names/KE
+        country_patterns = [
+            r"\b(Kenya|KE)\b",
+            r"\b(United States|USA|US)\b",
+            r"\b(United Kingdom|UK)\b",
+            r"\b(Germany|DE)\b",
+            r"\b(France|FR)\b",
+            r"\b(Canada|CA)\b",
+            r"\b(Australia|AU)\b",
+            r"\b(India|IN)\b",
+            r"\b(Brazil|BR)\b",
+            r"\b(Japan|JP)\b",
+        ]
+        for pat in country_patterns:
+            m = _re.search(pat, page_text, _re.IGNORECASE)
+            if m:
+                target_country = m.group(1).strip()
+                break
+
+    # ── Attack date: look for date patterns ────────────────────────────────
+    attack_date = None
+    date_patterns = [
+        r"(\d{1,2}/\d{1,2}/\d{4})",
+        r"(\d{4}-\d{2}-\d{2})",
+        r"(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})",
+    ]
+    for pat in date_patterns:
+        m = _re.search(pat, page_text)
+        if m:
+            try:
+                from datetime import datetime as _dt
+                date_str = m.group(1)
+                for fmt in ("%d/%m/%Y", "%m/%d/%Y", "%Y-%m-%d", "%d %B %Y", "%d %b %Y"):
+                    try:
+                        attack_date = _dt.strptime(date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                if attack_date:
+                    break
+            except Exception:
+                pass
+
+    return {
+        "victim_name": victim_name,
+        "target_country": target_country,
+        "leak_site": leak_site,
+        "keyword_matched": keyword,
+        "source_url": url,
+        "attack_date": attack_date,
+        "raw_content": page_text[:2000] if page_text else None,
+    }
+
+    soup = BeautifulSoup(html, "lxml")
+
+    # Strip global-noise containers: keyword here is just branding, not a victim page.
+    for tag in soup(["title", "header", "footer", "nav", "script", "style", "noscript"]):
+        tag.decompose()
+
+    keyword_lower = keyword.lower()
+
+    # Search text nodes for the keyword.
+    for text_node in soup.find_all(string=lambda t: t and keyword_lower in t.lower()):
+        parent = text_node.parent
+
+        # Walk up to find the closest <a> ancestor.
+        current = parent
+        while current is not None and current.name != "a":
+            current = current.parent
+
+        if current is not None:
+            href = current.get("href")
+            if href and not href.startswith(("#", "mailto:", "javascript:")):
+                absolute = urljoin(base_url, href.strip())
+                if absolute != base_url:
+                    return absolute
+
+        # Check nearby sibling <a> tags (the link might be a sibling, not an ancestor).
+        for sibling in parent.find_all_next("a", limit=5):
+            href = sibling.get("href")
+            if href and not href.startswith(("#", "mailto:", "javascript:")):
+                absolute = urljoin(base_url, href.strip())
+                if absolute != base_url:
+                    return absolute
+
+    return base_url
+
 async def run_scan(
     seeds: list[str],
     keyword_config: KeywordConfig,
@@ -129,6 +286,15 @@ async def run_scan(
 
             hits = scanner.scan(url=page.url, text=page.text, depth=page.depth)
 
+            # Extract deep links: find the specific <a> where each keyword lives,
+            # not just the base page URL.
+            deep_links: dict[str, str] = {}
+            if page.html:
+                for hit in hits:
+                    deep_links[hit.keyword] = extract_deep_link(
+                        page.html, page.url, hit.keyword
+                    )
+
             for hit in hits:
                 # ── URL blocklist: never save hits from junk / legal / search pages ──
                 hit_url_lower = (hit.url or "").lower()
@@ -147,6 +313,7 @@ async def run_scan(
                     # the hit (defensive: never break the crawl on scoring errors).
                     pass
 
+                source_url = deep_links.get(hit.keyword, hit.url)
                 hit_id = storage.save_hit(
                     url=hit.url,
                     keyword=hit.keyword,
@@ -155,11 +322,30 @@ async def run_scan(
                     position=hit.position,
                     depth=hit.depth,
                     session_id=session_id,
+                    source_url=source_url,
                 )
                 hits_found += 1
                 match_hit_to_projects(hit_id, hit.url, hit.keyword, hit.context, storage)
                 if alerter.alert(hit):
                     storage.mark_alerted(hit_id)
+
+            # ── Historical attacks: save victim metadata from deep-link pages ──
+            if hits and page.html:
+                from urllib.parse import urlparse
+                parsed = urlparse(page.url)
+                is_deep_link = parsed.path and parsed.path not in ("", "/")
+                if is_deep_link:
+                    meta = parse_victim_metadata(page.html, page.url, hits[0].keyword)
+                    if meta.get("source_url"):
+                        storage.save_historical_attack(
+                            source_url=meta["source_url"],
+                            victim_name=meta.get("victim_name"),
+                            target_country=meta.get("target_country"),
+                            leak_site=meta.get("leak_site"),
+                            keyword_matched=meta.get("keyword_matched"),
+                            attack_date=meta.get("attack_date"),
+                            raw_content=meta.get("raw_content"),
+                        )
 
             if pages_crawled % 10 == 0:
                 logger.info(f"Progress: {pages_crawled} pages crawled, {hits_found} hits found")

@@ -86,6 +86,7 @@ class KeywordHitRecord(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, nullable=True)
     url = Column(Text, nullable=False)
+    source_url = Column(Text, nullable=True)  # deep link where keyword actually resides
     keyword = Column(String(500), nullable=False)
     category = Column(String(200), nullable=False)
     context = Column(Text)
@@ -99,6 +100,26 @@ class KeywordHitRecord(Base):
         Index("ix_keyword_hits_category", "category"),
         Index("ix_keyword_hits_found_at", "found_at"),
         Index("ix_keyword_hits_session", "session_id"),
+    )
+
+
+class HistoricalAttack(Base):
+    __tablename__ = "historical_attacks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    victim_name = Column(String(255), nullable=True)
+    target_country = Column(String(100), nullable=True)
+    leak_site = Column(String(100), nullable=True)
+    keyword_matched = Column(String(100), nullable=True)
+    source_url = Column(Text, unique=True, nullable=False)
+    attack_date = Column(DateTime, nullable=True)
+    discovered_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    raw_content = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_historical_attacks_source_url", "source_url"),
+        Index("ix_historical_attacks_leak_site", "leak_site"),
+        Index("ix_historical_attacks_discovered", "discovered_at"),
     )
 
 
@@ -460,6 +481,7 @@ class Storage:
         position: int,
         depth: int,
         session_id: Optional[int] = None,
+        source_url: Optional[str] = None,
     ) -> int:
         # Defence in depth: a snippet is never stored as a page dump.
         context = (context or "").strip()
@@ -469,6 +491,7 @@ class Storage:
             record = KeywordHitRecord(
                 session_id=session_id,
                 url=url,
+                source_url=source_url,
                 keyword=keyword,
                 category=category,
                 context=context,
@@ -486,6 +509,62 @@ class Storage:
             if record:
                 record.alerted = True
                 session.commit()
+
+    def save_historical_attack(
+        self,
+        source_url: str,
+        victim_name: Optional[str] = None,
+        target_country: Optional[str] = None,
+        leak_site: Optional[str] = None,
+        keyword_matched: Optional[str] = None,
+        attack_date: Optional[datetime] = None,
+        raw_content: Optional[str] = None,
+    ) -> Optional[int]:
+        """Save a historical attack record, deduplicating on source_url."""
+        with self.get_session() as session:
+            existing = (
+                session.query(HistoricalAttack)
+                .filter(HistoricalAttack.source_url == source_url)
+                .first()
+            )
+            if existing:
+                return existing.id
+            record = HistoricalAttack(
+                victim_name=victim_name,
+                target_country=target_country,
+                leak_site=leak_site,
+                keyword_matched=keyword_matched,
+                source_url=source_url,
+                attack_date=attack_date,
+                raw_content=raw_content,
+            )
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return record.id
+
+    def get_historical_attacks(self, limit: int = 100) -> list[dict]:
+        with self.get_session() as session:
+            rows = (
+                session.query(HistoricalAttack)
+                .order_by(HistoricalAttack.discovered_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    "id": r.id,
+                    "victim_name": r.victim_name,
+                    "target_country": r.target_country,
+                    "leak_site": r.leak_site,
+                    "keyword_matched": r.keyword_matched,
+                    "source_url": r.source_url,
+                    "attack_date": r.attack_date.isoformat() if r.attack_date else None,
+                    "discovered_at": r.discovered_at.isoformat() if r.discovered_at else None,
+                    "raw_content": r.raw_content[:500] if r.raw_content else None,
+                }
+                for r in rows
+            ]
 
     def get_recent_hits(self, limit: int = 100) -> list[KeywordHitRecord]:
         with self.get_session() as session:
