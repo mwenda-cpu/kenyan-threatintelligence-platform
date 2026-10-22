@@ -4797,17 +4797,26 @@ def api_breaches_directory():
     storage = get_storage()
     try:
         with storage.get_session() as session:
-            from darkweb_scanner.storage import PasteHit
+            from ..storage import PasteHit
 
-            q = session.query(PasteHit).filter(
-                # Covers both the historical backfill ("ransomware.historical")
-                # and the live scraper ("Ransomware:<group>").
+            # Base filter: ransomware-related sources only.
+            base_filter = (
                 PasteHit.source.ilike("ransomware%"),
-                PasteHit.matched_pattern.ilike("%RANSOMWARE%"),
             )
 
-            hits = q.order_by(PasteHit.found_at.desc()).all()
+            # Fetch all matching hits ordered by date (latest first).
+            raw_hits = session.query(PasteHit).filter(*base_filter).order_by(PasteHit.found_at.desc()).all()
 
+            # Deduplicate in Python
+            seen = set()
+            hits = []
+            for h in raw_hits:
+                key = h.victim or h.paste_id or h.id
+                if key not in seen:
+                    seen.add(key)
+                    hits.append(h)
+
+            total_breaches = len(hits)
             records = []
             total_records_exposed = 0
             oldest_date = None
@@ -4831,7 +4840,7 @@ def api_breaches_directory():
                     "threat_actor": h.group_name or "Unknown",
                     "leak_url": h.url or "",
                     "date": h.found_at.isoformat() if h.found_at else None,
-                    "status_badges": h.status_badges or "RANSOMWARE",
+                    "status_badges": getattr(h, "status_badges", None) or "RANSOMWARE",
                     "records_exposed": records_exposed,
                 })
 
@@ -4842,9 +4851,11 @@ def api_breaches_directory():
             else:
                 years_tracked = 0
 
+            print(f"[api_breaches] Total raw: {len(raw_hits)}, Deduped: {len(hits)}", flush=True)
+
             return jsonify({
                 "ok": True,
-                "total_breaches": len(records),
+                "total_breaches": total_breaches,
                 "total_records_exposed": total_records_exposed,
                 "years_tracked": years_tracked,
                 "breaches": records,
