@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -15,6 +15,7 @@ import requests
 from flask import Blueprint, Response, jsonify, render_template, request, session
 
 from ..auth import hash_password, require_login, validate_password_strength
+from ..storage import HistoricalAttack
 from .forecaster import forecast_hits
 from .http_client import SafeFetchError, check_host_ssrf, safe_fetch
 from .predictor import calculate_threat_score, threat_level
@@ -148,10 +149,91 @@ def api_hits():
 @dashboard_bp.route("/api/keywords", methods=["GET"])
 @require_login
 def api_keywords_get():
-    """Every keyword as a JSON array: [{keyword, category, severity}, ...]."""
+    """Every keyword as a JSON array with predictability scores.
+
+    Response: [{keyword, category, severity, count, predictability}, ...]
+    """
     try:
-        rows = _keyword_store().list_keywords()
-        return jsonify(rows)
+        from ..analytics.predictor import calculate_predictability_score
+
+        storage = _keyword_store()
+        rows = storage.list_keywords()
+
+        # Compute daily hit counts per keyword over the last 30 days
+        # by scanning recent paste hits for domain matches in matched_value/context.
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
+        hits = storage.get_recent_paste_hits(limit=5000)
+
+        # Build per-domain daily counts: {domain: {date_str: count}}
+        from collections import defaultdict
+        domain_daily: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+        # Build evidence map: {keyword_lower: list of evidence dicts}
+        evidence_map: dict[str, list[dict]] = defaultdict(list)
+
+        for h in hits or []:
+            fa = h.get("found_at")
+            if not fa:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(fa))
+                if dt < cutoff:
+                    continue
+            except (ValueError, TypeError):
+                continue
+            date_str = dt.strftime("%Y-%m-%d")
+
+            text = f"{h.get('matched_value') or ''} {h.get('context') or ''}".lower()
+            for row in rows:
+                kw = (row.get("keyword") or "").lower()
+                if kw and kw in text:
+                    domain_daily[kw][date_str] += 1
+                    # Build structured evidence entry
+                    ev = {
+                        "victim": h.get("victim") or h.get("matched_value") or "Unknown",
+                        "group": h.get("group_name") or h.get("source", "").replace("Ransomware:", "") or "Unknown",
+                        "date": date_str,
+                        "data_type": row.get("category") or "Unknown",
+                        "url": h.get("url") or "",
+                        "raw_context": (h.get("context") or "")[:500],
+                        "source": h.get("source") or "",
+                        "sector": h.get("sector") or "Unknown",
+                        "ransom_amount": h.get("ransom_amount") or "N/A",
+                    }
+                    # Avoid duplicate evidence entries
+                    if not any(e["url"] == ev["url"] and e["victim"] == ev["victim"] for e in evidence_map[kw]):
+                        evidence_map[kw].append(ev)
+
+        # Enrich each keyword with count + predictability + sources + evidence
+        enriched = []
+        for row in rows:
+            kw = (row.get("keyword") or "").lower()
+            daily_map = domain_daily.get(kw, {})
+            daily_counts = [daily_map.get(d, 0) for d in
+                            [(cutoff + timedelta(days=i)).strftime("%Y-%m-%d")
+                             for i in range(31)]]
+            total_count = sum(daily_counts)
+            predictability = calculate_predictability_score(kw, daily_counts)
+
+            ev_list = evidence_map.get(kw, [])
+            sources = list(set(e["url"] for e in ev_list if e["url"]))
+            evidence = ev_list[0]["raw_context"] if ev_list else ""
+
+            enriched.append({
+                "keyword": row.get("keyword"),
+                "category": row.get("category"),
+                "severity": row.get("severity"),
+                "count": total_count,
+                "predictability": predictability,
+                "sources": sources,
+                "evidence": evidence,
+                "evidence_list": ev_list,
+            })
+
+        # Sort by count desc
+        enriched.sort(key=lambda r: r["count"], reverse=True)
+
+        return jsonify(enriched)
     except Exception as e:
         logger.error("GET /api/keywords failed: %s", e)
         return jsonify({"error": str(e)}), 500
@@ -903,28 +985,136 @@ def api_sessions():
 @dashboard_bp.route("/api/sessions/<int:session_id>/hits", methods=["GET"])
 @require_login
 def api_session_hits(session_id):
+    import traceback
+    from flask import jsonify
     from ..storage import MAX_HIT_CONTEXT_LEN
 
-    storage = get_storage()
-    hits = storage.get_hits_by_session(session_id, limit=200)
-    return jsonify(
-        [
-            {
-                "id": r.id,
-                "url": r.url,
-                "keyword": r.keyword,
-                "category": r.category,
-                # Never ship a page dump to the browser.
-                "context": (r.context or "")[:MAX_HIT_CONTEXT_LEN],
-                "depth": r.depth,
-                "found_at": r.found_at.isoformat() if r.found_at else None,
-            }
-            for r in hits
-        ]
-    )
+    try:
+        storage = get_storage()
+        hits = storage.get_hits_by_session(session_id, limit=200)
+        return jsonify(
+            [
+                {
+                    "id": r.id,
+                    "url": r.url,
+                    "source_url": r.source_url or r.url,
+                    "keyword": r.keyword,
+                    "category": r.category,
+                    # Never ship a page dump to the browser.
+                    "context": (r.context or "")[:MAX_HIT_CONTEXT_LEN],
+                    "depth": r.depth,
+                    "found_at": r.found_at.isoformat() if r.found_at else None,
+                }
+                for r in hits
+            ]
+        )
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"error": "Failed to load hits"}), 500
+
+@dashboard_bp.route("/api/hits", methods=["GET"])
+@require_login
+def api_hits_by_keyword():
+    import traceback
+    from flask import jsonify, request
+    from ..storage import MAX_HIT_CONTEXT_LEN
+
+    keyword = request.args.get("keyword", "").strip()
+    limit = int(request.args.get("limit", 200))
+    if not keyword:
+        return jsonify({"error": "keyword parameter is required"}), 400
+
+    try:
+        storage = get_storage()
+        hits = storage.get_hits_by_keyword(keyword, limit=limit)
+        return jsonify(
+            [
+                {
+                    "id": r.id,
+                    "url": r.url,
+                    "source_url": r.source_url or r.url,
+                    "keyword": r.keyword,
+                    "category": r.category,
+                    # Never ship a page dump to the browser.
+                    "context": (r.context or "")[:MAX_HIT_CONTEXT_LEN],
+                    "depth": r.depth,
+                    "found_at": r.found_at.isoformat() if r.found_at else None,
+                }
+                for r in hits
+            ]
+        )
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"error": "Failed to load hits"}), 500
 
 
-# ── PDF Report API ─────────────────────────────────────────────────────────────
+@dashboard_bp.route("/api/analytics/predict", methods=["GET"])
+@require_login
+def api_analytics_predict():
+    """Predict next-month attack count for a keyword using historical data.
+
+    Always returns a usable prediction — falls back to moving averages for
+    sparse data (1-2 months) and a simulated baseline when there is zero data.
+    """
+    import traceback
+    from flask import jsonify, request
+
+    from sqlalchemy import func
+    from .storage_helper import get_storage
+
+    keyword = request.args.get("keyword", "").strip()
+    if not keyword:
+        return jsonify({"error": "keyword parameter is required"}), 400
+
+    try:
+        storage = get_storage()
+        with storage.get_session() as session:
+            rows = (
+                session.query(
+                    func.date_trunc("month", HistoricalAttack.attack_date).label("month"),
+                    func.count(HistoricalAttack.id).label("count"),
+                )
+                .filter(HistoricalAttack.keyword_matched == keyword)
+                .group_by(func.date_trunc("month", HistoricalAttack.attack_date))
+                .order_by(func.date_trunc("month", HistoricalAttack.attack_date))
+                .all()
+            )
+
+        monthly_data = []
+        for row in rows:
+            month_dt = row.month
+            if month_dt is not None:
+                monthly_data.append({
+                    "month": month_dt.strftime("%Y-%m"),
+                    "count": int(row.count or 0),
+                    "simulated": False,
+                })
+
+        from ..analytics.predictor import predict_for_keyword, generate_simulated_baseline
+        result = predict_for_keyword(keyword, monthly_data)
+
+        # If zero historical data, generate a simulated baseline so the chart renders
+        simulated = False
+        if not monthly_data:
+            baseline = generate_simulated_baseline(keyword, months_back=6, base_rate=1.0)
+            monthly_data = baseline
+            simulated = True
+            result = predict_for_keyword(keyword, monthly_data)
+
+        return jsonify({
+            "keyword": keyword,
+            "months_analyzed": len(monthly_data),
+            "monthly_data": monthly_data,
+            "simulated": simulated,
+            "trend": result["trend"],
+            "prediction_next_month": result["prediction_next_month"],
+            "confidence_score": result["confidence_score"],
+            "method": result.get("method", "baseline"),
+        })
+
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"error": "Prediction failed"}), 500
 
 
 @dashboard_bp.route("/api/report/pdf", methods=["GET"])
@@ -935,7 +1125,7 @@ def api_report_pdf():
         from datetime import datetime as dt
         from flask import Response, jsonify
 
-        from ..storage_helper import get_storage
+        from .storage_helper import get_storage
         from ..ke_context import KenyaContext
         from ..snippets import is_actionable_hit
         from .pdf_generator.main import build_report
@@ -2120,6 +2310,145 @@ def api_dns_enrich(inv_id: int):
     })
 
 
+# ── Port Scan & Directory Enumeration (async, Tor-proxied) ───────────────
+@dashboard_bp.route("/api/dns/investigations/<int:inv_id>/scan", methods=["POST"])
+@require_login
+def api_dns_scan(inv_id: int):
+    """Start port scan + directory enumeration for a DNS investigation target.
+
+    Returns 202 Accepted with a task_id. The client polls
+    GET /api/dns/investigations/{inv_id}/scan/status for completion.
+    """
+    import threading
+
+    from ..scan_engine import start_scan
+
+    logger.info("[api_dns_scan] Starting scan for investigation %s", inv_id)
+
+    storage = get_storage()
+    inv = storage.get_dns_investigation(inv_id)
+    if not inv:
+        logger.warning("[api_dns_scan] Investigation %s not found", inv_id)
+        return jsonify({"error": "investigation not found"}), 404
+
+    body = request.get_json() or {}
+    scan_ports = bool(body.get("scan_ports", True))
+    scan_dirs = bool(body.get("scan_dirs", True))
+
+    # Determine target: use the investigation domain (first resolved IP if available)
+    target = inv.get("domain")
+    if not target:
+        logger.warning("[api_dns_scan] No target domain for investigation %s", inv_id)
+        return jsonify({"error": "no target domain"}), 400
+
+    logger.info("[api_dns_scan] Scanning target=%s ports=%s dirs=%s", target, scan_ports, scan_dirs)
+
+    task_id = start_scan(target, scan_ports, scan_dirs)
+
+    # Store task_id on the investigation so we can associate results later
+    result = inv.get("result", {})
+    result["scan_task_id"] = task_id
+    with storage.get_session() as db_session:
+        from ..storage import DNSInvestigation
+        row = db_session.get(DNSInvestigation, inv_id)
+        if row:
+            row.result_json = json.dumps(result)
+            db_session.commit()
+
+    return jsonify({
+        "ok": True,
+        "task_id": task_id,
+        "target": target,
+        "status": "pending",
+    }), 202
+
+
+@dashboard_bp.route("/api/dns/investigations/<int:inv_id>/scan/status", methods=["GET"])
+@require_login
+def api_dns_scan_status(inv_id: int):
+    """Return the status/result of a background scan task."""
+    from ..scan_engine import get_task
+
+    logger.info("[api_dns_scan_status] Checking status for investigation %s", inv_id)
+
+    storage = get_storage()
+    inv = storage.get_dns_investigation(inv_id)
+    if not inv:
+        logger.warning("[api_dns_scan_status] Investigation %s not found", inv_id)
+        return jsonify({"error": "investigation not found"}), 404
+
+    result = inv.get("result", {})
+    task_id = result.get("scan_task_id")
+    if not task_id:
+        logger.info("[api_dns_scan_status] No scan task for investigation %s", inv_id)
+        return jsonify({"ready": False, "status": "not_started"}), 200
+
+    task = get_task(task_id)
+    if not task:
+        logger.warning("[api_dns_scan_status] Task %s not found", task_id)
+        return jsonify({"ready": False, "status": "unknown_task"}), 200
+
+    ready = task["status"] in ("completed", "failed")
+    resp = {
+        "ready": ready,
+        "status": task["status"],
+        "task_id": task_id,
+    }
+    if task["status"] == "completed" and task.get("result"):
+        logger.info("[api_dns_scan_status] Scan completed for investigation %s", inv_id)
+        resp["result"] = task["result"]
+        # Merge scan results into the investigation result_json
+        merged = dict(result)
+        merged["port_scan"] = task["result"].get("port_scan", {})
+        merged["dir_enum"] = task["result"].get("dir_enum", {})
+        with storage.get_session() as db_session:
+            from ..storage import DNSInvestigation
+            row = db_session.get(DNSInvestigation, inv_id)
+            if row:
+                row.result_json = json.dumps(merged)
+                db_session.commit()
+    elif task["status"] == "failed":
+        logger.warning("[api_dns_scan_status] Scan failed for investigation %s: %s", inv_id, task.get("error", "unknown"))
+        resp["error"] = task.get("error", "unknown error")
+
+    return jsonify(resp), 200
+
+
+# ── OSINT Enrichment API ──────────────────────────────────────────────────────
+@dashboard_bp.route("/api/dns/investigations/<int:inv_id>/osint", methods=["GET"])
+@require_login
+def api_dns_osint(inv_id: int):
+    """Enrich a DNS investigation with OSINT data from Shodan and URLScan."""
+    import traceback
+    from flask import jsonify
+
+    storage = get_storage()
+    inv = storage.get_dns_investigation(inv_id)
+    if not inv:
+        return jsonify({"error": "investigation not found"}), 404
+
+    result = inv.get("result", {})
+    domain = inv.get("domain", "")
+    dns = result.get("dns_records", {})
+    ips = dns.get("A", []) + dns.get("AAAA", [])
+
+    try:
+        from darkweb_scanner.scrapers.osint_enrichment import enrich_dns_with_osint
+        osint_data = enrich_dns_with_osint(domain, ips)
+        # Merge into result
+        result["osint"] = osint_data
+        with storage.get_session() as db_session:
+            from darkweb_scanner.storage import DNSInvestigation
+            row = db_session.get(DNSInvestigation, inv_id)
+            if row:
+                import json as _json
+                row.result_json = _json.dumps(result)
+                db_session.commit()
+        return jsonify({"ok": True, "osint": osint_data})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 @dashboard_bp.route("/api/dns/certs/<path:domain>", methods=["GET"], strict_slashes=False)
 @require_login
 def api_dns_certs(domain: str):
@@ -2376,6 +2705,15 @@ def api_dns_pdf(inv_id: int):
             return ""
         parts = [f"{g.get('city','')} {g.get('countryCode','')}" for g in (geo_list if isinstance(geo_list, list) else [geo_list]) if g and g.get("country")]
         return " / ".join(p.strip() for p in parts if p.strip())
+
+    def get_port_service_name(port_num: str) -> str:
+        svc = {
+            '21':'FTP','22':'SSH','23':'Telnet','25':'SMTP','53':'DNS','80':'HTTP',
+            '110':'POP3','111':'RPC','135':'MSRPC','139':'NetBIOS','143':'IMAP',
+            '443':'HTTPS','445':'SMB','993':'IMAPS','995':'POP3S','1723':'PPTP',
+            '3306':'MySQL','3389':'RDP','5900':'VNC','8080':'HTTP-Proxy','8443':'HTTPS-Alt'
+        }
+        return svc.get(str(port_num), 'unknown')
 
     # ── ASN / hosting breakdown ───────────────────────────────────────────────
     asn_counter = Counter()
@@ -2691,42 +3029,26 @@ window._ready = true;
 
     # ── GRAPH: port heatmap ───────────────────────────────────────────────────
     def build_port_heatmap():
-        if not port_scan:
+        ports_dict = port_scan.get("ports", {}) if isinstance(port_scan, dict) else {}
+        if not ports_dict:
             return None
-        all_ports = {}
-        for ip, ports in port_scan.items():
-            for p in ports:
-                key = f"{p['port']}/{p['service']}"
-                if key not in all_ports:
-                    all_ports[key] = {}
-                all_ports[key][ip] = p["status"]
-
-        open_ports = {k: v for k, v in all_ports.items() if any(s == "open" for s in v.values())}
+        open_ports = {p: s for p, s in ports_dict.items() if s == "open"}
         if not open_ports:
             return None
 
-        ips = list(port_scan.keys())
-        port_keys = sorted(open_ports.keys(), key=lambda x: int(x.split("/")[0]))
-        matrix = []
-        for pk in port_keys:
-            row = []
-            for ip in ips:
-                status = all_ports.get(pk, {}).get(ip, "closed")
-                row.append(1 if status == "open" else 0.3 if status == "filtered" else 0)
-            matrix.append(row)
+        port_keys = sorted(open_ports.keys(), key=lambda x: int(x))
+        matrix = [[1 if ports_dict.get(pk) == "open" else 0] for pk in port_keys]
 
-        fig, ax = plt.subplots(figsize=(max(4, len(ips) * 1.2), max(3, len(port_keys) * 0.35)))
+        fig, ax = plt.subplots(figsize=(4, max(3, len(port_keys) * 0.35)))
         fig.patch.set_facecolor("#161b22")
         ax.set_facecolor("#161b22")
         import numpy as np
         from matplotlib.colors import LinearSegmentedColormap
-        cmap = LinearSegmentedColormap.from_list("ports", ["#0d1117", "#d29922", "#3fb950"])
+        cmap = LinearSegmentedColormap.from_list("ports", ["#0d1117", "#3fb950"])
         ax.imshow(np.array(matrix), aspect="auto", cmap=cmap, vmin=0, vmax=1)
-        ax.set_xticks(range(len(ips)))
-        ax.set_xticklabels(ips, fontsize=6, color="#8b949e", rotation=20, ha="right")
         ax.set_yticks(range(len(port_keys)))
         ax.set_yticklabels(port_keys, fontsize=6, color="#e6edf3", fontfamily="monospace")
-        ax.set_title("Open Port Heatmap", color="#e6edf3", fontsize=8, fontweight="bold", pad=6)
+        ax.set_title("Open Ports", color="#e6edf3", fontsize=8, fontweight="bold", pad=6)
         ax.tick_params(colors="#30363d")
         for spine in ax.spines.values():
             spine.set_color("#30363d")
@@ -3206,7 +3528,10 @@ window._ready = true;
             ))
 
     # ── Port scan ─────────────────────────────────────────────────────────────
-    if port_scan:
+    ports_dict = port_scan.get("ports", {}) if isinstance(port_scan, dict) else {}
+    open_ports = [p for p, s in ports_dict.items() if s == "open"]
+    filt_ports = [p for p, s in ports_dict.items() if s == "filtered"]
+    if ports_dict:
         story.append(PageBreak())
         section_header("Port Scan Results")
 
@@ -3219,29 +3544,24 @@ window._ready = true;
         except Exception:
             pass
 
-        # Open ports detail table per IP
-        for ip, ports in port_scan.items():
-            open_p = [p for p in ports if p["status"] == "open"]
-            filt_p = [p for p in ports if p["status"] == "filtered"]
-            if not open_p and not filt_p:
-                continue
+        # Open ports detail table
+        if open_ports:
             story.append(Paragraph(
-                f'<font color="#58a6ff"><b>{ip}</b></font> — '
-                f'<font color="#3fb950"><b>{len(open_p)} open</b></font>'
-                + (f', <font color="#d29922">{len(filt_p)} filtered</font>' if filt_p else ""),
-                S(f"ip_{ip}", fontSize=8, textColor=C_TEXT, leading=12, spaceBefore=6, spaceAfter=3)
+                f'<font color="#58a6ff"><b>{port_scan.get("ip","")}</b></font> — '
+                f'<font color="#3fb950"><b>{len(open_ports)} open</b></font>'
+                + (f', <font color="#d29922">{len(filt_ports)} filtered</font>' if filt_ports else ""),
+                S(f"ip_ports", fontSize=8, textColor=C_TEXT, leading=12, spaceBefore=6, spaceAfter=3)
             ))
-            if open_p:
-                port_rows = [[
-                    Paragraph(str(p["port"]), S("pn", fontSize=7, fontName="Helvetica-Bold", textColor=C_GREEN, leading=10)),
-                    Paragraph(p["service"], s_body),
-                    Paragraph("OPEN", S("po", fontSize=7, fontName="Helvetica-Bold", textColor=C_GREEN, leading=10)),
-                ] for p in open_p]
-                story.append(dark_table(
-                    [Paragraph(h, S(f"ph{h}", fontSize=7, textColor=C_TEXT, fontName="Helvetica-Bold"))
-                     for h in ["Port", "Service", "Status"]],
-                    port_rows, [PW*0.12, PW*0.38, PW*0.50]
-                ))
+            port_rows = [[
+                Paragraph(str(p), S("pn", fontSize=7, fontName="Helvetica-Bold", textColor=C_GREEN, leading=10)),
+                Paragraph(get_port_service_name(p), s_body),
+                Paragraph("OPEN", S("po", fontSize=7, fontName="Helvetica-Bold", textColor=C_GREEN, leading=10)),
+            ] for p in open_ports]
+            story.append(dark_table(
+                [Paragraph(h, S(f"ph{h}", fontSize=7, textColor=C_TEXT, fontName="Helvetica-Bold"))
+                 for h in ["Port", "Service", "Status"]],
+                port_rows, [PW*0.12, PW*0.38, PW*0.50]
+            ))
 
     # ── Directory enumeration ─────────────────────────────────────────────────
     if dir_enum:
@@ -3302,7 +3622,11 @@ window._ready = true;
         f"Target: {domain}  ·  Report ID: OSINTPH-DNS-{inv_id}-{dt.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d')}",
         s_foot))
 
-    doc.build(story, onFirstPage=dark_page, onLaterPages=dark_page)
+    try:
+        doc.build(story, onFirstPage=dark_page, onLaterPages=dark_page)
+    except Exception as build_err:
+        logger.error("[api_dns_pdf] doc.build failed: %s", build_err, exc_info=True)
+        return jsonify({"error": f"PDF build failed: {build_err}"}), 500
     buf.seek(0)
     return Response(
         buf.read(),
@@ -3558,7 +3882,11 @@ def api_paste_hits():
     limit = int(request.args.get("limit", 100))
     source = request.args.get("source")
     pattern = request.args.get("pattern")
-    return jsonify(get_storage().get_recent_paste_hits(limit=limit, source=source, pattern=pattern))
+    hits = get_storage().get_recent_paste_hits(limit=limit, source=source, pattern=pattern)
+    logger.info("GET /api/paste/hits: returning %d hits (limit=%d, source=%s, pattern=%s)",
+                len(hits), limit, source, pattern)
+    logger.info("Paste hits JSON structure: %s", jsonify(hits).get_json())
+    return jsonify(hits)
 
 
 @dashboard_bp.route("/api/paste/stats", methods=["GET"])
@@ -3580,6 +3908,230 @@ def api_paste_scan():
         result = run_paste_monitor(storage, single_run=True)
         return jsonify({"ok": True, **result})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/api/paste/scrape", methods=["POST"])
+@require_login
+def api_paste_scrape():
+    """Trigger the new clearnet paste scraper (admin only).
+
+    Scrapes Rentry, Hastebin, Ghostbin, and (if PASTEBIN_API_KEY is set) Pastebin.
+    Extracts Kenyan threat indicators and saves hits to the database.
+    Also runs dynamic keyword extraction on newly ingested hits.
+    """
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user.is_admin:
+        return jsonify({"error": "Admin only"}), 403
+    try:
+        from darkweb_scanner.scrapers.paste_scraper import run_paste_scraper
+        from darkweb_scanner.scrapers.keyword_extractor import extract_and_store_keywords
+
+        # Run the scraper
+        scrape_result = run_paste_scraper(storage)
+
+        # Run dynamic keyword extraction on newly ingested hits
+        kw_result = extract_and_store_keywords(storage, lookback_days=7)
+
+        return jsonify({
+            "ok": True,
+            "scraped": scrape_result,
+            "keywords": kw_result,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Threat IOC Feeds API ───────────────────────────────────────────────────────
+@dashboard_bp.route("/api/iocs", methods=["GET"])
+@require_login
+def api_iocs():
+    """Return threat IOCs (IPs, domains, URLs, hashes) from open-source feeds."""
+    storage = get_storage()
+    ioc_type = request.args.get("type")
+    source = request.args.get("source")
+    limit = int(request.args.get("limit", 200))
+    iocs = storage.get_threat_iocs(limit=limit, ioc_type=ioc_type, source=source)
+    return jsonify(iocs)
+
+
+@dashboard_bp.route("/api/iocs/scrape", methods=["POST"])
+@require_login
+def api_iocs_scrape():
+    """Trigger IOC scraper (URLhaus, Feodo Tracker, AlienVault OTX). Admin only."""
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user.is_admin:
+        return jsonify({"error": "Admin only"}), 403
+    try:
+        from darkweb_scanner.scrapers.ioc_scraper import run_ioc_scraper
+        result = run_ioc_scraper(storage)
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Dark Web (Tor) Scraper API ────────────────────────────────────────────────
+@dashboard_bp.route("/api/paste/scrape-onion", methods=["POST"])
+@require_login
+def api_paste_scrape_onion():
+    """Trigger Tor onion scraper. Admin only."""
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user.is_admin:
+        return jsonify({"error": "Admin only"}), 403
+    try:
+        from darkweb_scanner.scrapers.onion_scraper import scrape_onion
+        result = scrape_onion(storage)
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Contextual Intel API ──────────────────────────────────────────────────────
+@dashboard_bp.route("/api/context/scrape", methods=["POST"])
+@require_login
+def api_context_scrape():
+    """Trigger contextual intel scraper (KE-CIRT, CAK, CBK reports). Admin only."""
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user.is_admin:
+        return jsonify({"error": "Admin only"}), 403
+    try:
+        from darkweb_scanner.scrapers.context_scraper import scrape_context
+        result = scrape_context(storage)
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/api/context/intel", methods=["GET"])
+@require_login
+def api_context_intel():
+    """Return contextual intel records."""
+    storage = get_storage()
+    source = request.args.get("source")
+    limit = int(request.args.get("limit", 100))
+    intel = storage.get_contextual_intel(limit=limit, source=source)
+    return jsonify(intel)
+
+
+# ── Synthetic Log Ingestion API ───────────────────────────────────────────────
+@dashboard_bp.route("/api/ingest/logs", methods=["POST"])
+@require_login
+def api_ingest_logs():
+    """Accept CSV file upload, extract Kenyan PII, save hits to database."""
+    import csv
+    import io
+
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user.is_admin:
+        return jsonify({"error": "Admin only"}), 403
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    if not file.filename or not file.filename.endswith(".csv"):
+        return jsonify({"error": "Only CSV files are accepted"}), 400
+
+    try:
+        from darkweb_scanner.scrapers.keyword_extractor import extract_kenyan_pii
+
+        content = file.read().decode("utf-8", errors="replace")
+        reader = csv.DictReader(io.StringIO(content))
+
+        total_rows = 0
+        total_pii = 0
+        pii_breakdown = {"phone": 0, "mpesa": 0, "kra_pin": 0}
+
+        for row in reader:
+            total_rows += 1
+            # Combine all column values into a single text string
+            row_text = " ".join(str(v) for v in row.values() if v)
+            pii_matches = extract_kenyan_pii(row_text)
+            for pii in pii_matches:
+                total_pii += 1
+                pii_breakdown[pii["type"]] = pii_breakdown.get(pii["type"], 0) + 1
+                try:
+                    paste_id = f"log_{abs(hash(row_text + pii['value']))}"[:200]
+                    if not storage.is_paste_seen("LogIngest", paste_id):
+                        storage.save_paste_hit(
+                            paste_id=paste_id,
+                            url="uploaded_csv",
+                            source="LogIngest",
+                            matched_pattern=f"Log PII: {pii['label']}",
+                            matched_value=pii["value"],
+                            context=row_text[:500],
+                        )
+                        storage.mark_paste_seen("LogIngest", paste_id, "uploaded_csv", had_hits=True)
+                except Exception as exc:
+                    logger.debug("Failed to save log PII hit: %s", exc)
+
+        return jsonify({
+            "ok": True,
+            "total_rows": total_rows,
+            "total_pii": total_pii,
+            "pii_breakdown": pii_breakdown,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/api/paste/scrape-ransomware", methods=["POST"])
+@require_login
+def api_paste_scrape_ransomware():
+    """Trigger the ransomware.live scraper for Kenyan victims (admin only).
+
+    Fetches recent ransomware victims from https://api.ransomware.live/recentvictims,
+    filters for Kenya-based or Kenya-related entities, and inserts them into
+    the paste_hits table so they appear in the Paste Monitor UI.
+    """
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user.is_admin:
+        return jsonify({"error": "Admin only"}), 403
+    try:
+        from darkweb_scanner.scrapers.ransomware_scraper import scrape_ransomware
+
+        result = scrape_ransomware(storage)
+
+        return jsonify({
+            "ok": True,
+            "scraped": result,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/api/paste/purge", methods=["POST"])
+@require_login
+def api_paste_purge():
+    """Purge ALL paste_hits records (admin only). One-time cleanup."""
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user.is_admin:
+        return jsonify({"error": "Admin only"}), 403
+    try:
+        deleted = storage.purge_paste_hits()
+        return jsonify({"ok": True, "deleted": deleted})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
@@ -4171,6 +4723,105 @@ def api_ke_context_correlate():
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────
+
+
+@dashboard_bp.route("/api/breaches/backfill", methods=["POST"])
+@require_login
+def api_breaches_backfill():
+    """Trigger the one-time historical backfill of Kenyan ransomware victims.
+
+    Admin only. Fetches all historical victims from ransomware.live where
+    country == KE and inserts them into paste_hits so the Breach Directory
+    is populated from day one.
+    """
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user.is_admin:
+        return jsonify({"error": "Admin only"}), 403
+    try:
+        from darkweb_scanner.scrapers.ransomware_scraper import (
+            backfill_historical_kenyan_victims,
+        )
+        result = backfill_historical_kenyan_victims(storage)
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/api/breaches/directory", methods=["GET"])
+@require_login
+def api_breaches_directory():
+    """
+    Return the breach directory: historical + recent Kenyan ransomware victims.
+
+    Filters paste_hits for ransomware-related sources and patterns, then
+    calculates aggregate stats (total_breaches, total_records_exposed,
+    years_tracked). Each record includes title, description, sector,
+    threat_actor, leak_url, date, status_badges, and records_exposed.
+    """
+    from sqlalchemy import func
+
+    storage = get_storage()
+    try:
+        with storage.get_session() as session:
+            from darkweb_scanner.storage import PasteHit
+
+            q = session.query(PasteHit).filter(
+                # Covers both the historical backfill ("ransomware.historical")
+                # and the live scraper ("Ransomware:<group>").
+                PasteHit.source.ilike("ransomware%"),
+                PasteHit.matched_pattern.ilike("%RANSOMWARE%"),
+            )
+
+            hits = q.order_by(PasteHit.found_at.desc()).all()
+
+            records = []
+            total_records_exposed = 0
+            oldest_date = None
+
+            for h in hits:
+                try:
+                    records_exposed = int(h.ransom_amount or 0)
+                except (ValueError, TypeError):
+                    records_exposed = 0
+                total_records_exposed += records_exposed
+
+                if h.found_at:
+                    if oldest_date is None or h.found_at < oldest_date:
+                        oldest_date = h.found_at
+
+                records.append({
+                    "id": h.id,
+                    "title": h.matched_value or "Unknown",
+                    "description": h.context or "",
+                    "sector": h.sector or "Unknown",
+                    "threat_actor": h.group_name or "Unknown",
+                    "leak_url": h.url or "",
+                    "date": h.found_at.isoformat() if h.found_at else None,
+                    "status_badges": h.matched_pattern or "RANSOMWARE",
+                    "records_exposed": records_exposed,
+                })
+
+            # Calculate years tracked
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            if oldest_date:
+                years_tracked = max(1, (now - oldest_date).days // 365)
+            else:
+                years_tracked = 0
+
+            return jsonify({
+                "ok": True,
+                "total_breaches": len(records),
+                "total_records_exposed": total_records_exposed,
+                "years_tracked": years_tracked,
+                "breaches": records,
+            })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @dashboard_bp.route("/api/health")

@@ -138,8 +138,8 @@
       main { padding: 16px; }
       header { padding: 0 16px; }
     }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
+    .tab-panel { display: none !important; }
+    .tab-panel.active { display: block !important; }
 
     /*  Live crawl card  */
     .crawl-card {
@@ -178,6 +178,40 @@
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: var(--surface2); }
     .keyword-tag { display: inline-block; background: rgba(88,166,255,.12); color: var(--accent); border: 1px solid rgba(88,166,255,.25); border-radius: 4px; padding: 2px 7px; font-size: 0.75rem; font-weight: 600; font-family: var(--mono); }
+    /* Keyword cloud container: scrollable flex-wrap badge grid */
+    #keywordsList {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+      padding: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      align-items: flex-start;
+    }
+    .kw-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      white-space: nowrap;
+      cursor: default;
+      border: 1px solid transparent;
+    }
+    .kw-pill .kw-domain { color: var(--text); }
+    .kw-pill .kw-count { color: var(--muted); }
+    .kw-pill .kw-pred { font-weight: 700; }
+    .kw-pred-low { color: var(--green); }
+    .kw-pred-med { color: var(--yellow); }
+    .kw-pred-high { color: var(--red); }
+    .kw-pill .kw-level { color: var(--muted); font-weight: 600; font-size: 0.72rem; }
+    .kw-pill .kw-sep { color: var(--muted); font-size: 0.72rem; }
     .cat-tag { display: inline-block; background: rgba(188,140,255,.1); color: var(--purple); border: 1px solid rgba(188,140,255,.2); border-radius: 4px; padding: 2px 7px; font-size: 0.73rem; }
     .url-cell { font-family: var(--mono); font-size: 0.75rem; color: var(--accent); word-break: break-all; max-width: 240px; }
     .ctx-cell { color: var(--muted); font-size: 0.76rem; font-family: var(--mono); max-width: 340px; white-space: pre-wrap; word-break: break-word; }
@@ -262,6 +296,17 @@
     .intel-modal-section { margin-bottom:20px; }
     .intel-modal-section-title { font-size:.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; }
     .intel-modal-desc { font-size:.85rem; color:var(--text); line-height:1.65; }
+
+    /*  Prediction Modal  */
+    .prediction-summary { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:20px; }
+    .prediction-summary h3 { margin:0 0 8px 0; font-size:1rem; color:var(--accent); }
+    .prediction-summary p { margin:0; font-size:.88rem; color:var(--text); line-height:1.5; }
+    .prediction-chart-container { position:relative; height:260px; width:100%; }
+    .prediction-trend-badge { display:inline-block; padding:4px 10px; border-radius:4px; font-size:.75rem; font-weight:700; margin-right:8px; }
+    .prediction-trend-increasing { background:rgba(248,81,73,.15); color:var(--red); border:1px solid rgba(248,81,73,.3); }
+    .prediction-trend-decreasing { background:rgba(63,185,80,.15); color:var(--green); border:1px solid rgba(63,185,80,.3); }
+    .prediction-trend-stable { background:rgba(210,153,34,.15); color:var(--yellow); border:1px solid rgba(210,153,34,.3); }
+    .prediction-trend-insufficient { background:rgba(139,148,158,.15); color:var(--muted); border:1px solid rgba(139,148,158,.3); }
     .intel-modal-hits-table { width:100%; border-collapse:collapse; font-size:.75rem; }
     .intel-modal-hits-table th { text-align:left; padding:6px 8px; color:var(--muted); font-weight:600; border-bottom:1px solid var(--border); }
     .intel-modal-hits-table td { padding:6px 8px; border-bottom:1px solid rgba(48,54,61,.5); vertical-align:top; }
@@ -560,7 +605,7 @@
     .jvm-tooltip { background: #1c2d3a !important; color: #e6edf3 !important; border: 1px solid #30363d !important; font-family: var(--mono) !important; font-size: .75rem !important; border-radius: 4px !important; padding: 4px 8px !important; }
     #infra-world-map { width: 100%; height: 220px; background: #0d1117; border-radius: 4px; border: 1px solid #30363d; }
   </style>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/css/jsvectormap.min.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/jsvectormap@1.5.3/dist/css/jsvectormap.min.css"/>
 </head>
 <body>
 
@@ -582,6 +627,7 @@
       <a href="#" data-tab="ioc-feed"> IOC Feed</a>
       <a href="#" data-tab="ip-lookup"> IP Lookup</a>
       <a href="#" data-tab="paste-monitor">PST Paste Monitor</a>
+      <a href="#" data-tab="breach-directory">DIR Breach Directory</a>
     </div>
   </div>
 
@@ -734,6 +780,17 @@
     .hd-predictive-card .hd-card-body{flex:1;min-height:0;overflow:auto}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/kenya-utils@latest/dist/index.js"></script>
+  <script>
+    // Fallback if kenya-utils CDN fails
+    window.addEventListener('error', (e) => {
+      if (e.target && e.target.src && e.target.src.includes('kenya-utils')) {
+        const s = document.createElement('script');
+        s.src = 'https://esm.sh/kenya-utils';
+        document.head.appendChild(s);
+      }
+    }, true);
+  </script>
 
   <!-- Hero -->
   <!-- Hero -->
@@ -816,24 +873,35 @@
     </div>
   </div>
 
-  <!-- Row 3: Press + System Status -->
-  <div class="hd-grid" style="grid-template-columns:1fr 1fr;margin-bottom:0">
-    <div class="hd-card">
-      <div class="hd-card-hdr">
-        <div class="hd-card-title"> Ransomware Press - KE Focus</div>
-        <button class="hd-card-action" onclick="hdLoadPress()"></button>
+  <!-- Row 3: Press + System Status + Predictive Threat Level (Dashboard only) -->
+  <div id="hdDashboardModules">
+    <div class="hd-grid" style="grid-template-columns:1fr 1fr;margin-bottom:0">
+      <div class="hd-card">
+        <div class="hd-card-hdr">
+          <div class="hd-card-title"> Ransomware Press - KE Focus</div>
+          <button class="hd-card-action" onclick="hdLoadPress()"></button>
+        </div>
+        <div class="hd-card-body" id="hdPressFeed"><div style="color:var(--muted);font-size:.78rem">Loading press...</div></div>
       </div>
-      <div class="hd-card-body" id="hdPressFeed"><div style="color:var(--muted);font-size:.78rem">Loading press...</div></div>
+      <div class="hd-card">
+        <div class="hd-card-hdr"><div class="hd-card-title">TOOL System Status</div></div>
+        <div class="hd-card-body">
+          <div class="hd-sys-row"><span>Tor Crawler</span><span class="hd-sys-val"><span class="hd-sys-dot" id="sysDotCrawler"></span><span id="sysValCrawler">Checking...</span></span></div>
+          <div class="hd-sys-row"><span>ransomware.live PRO</span><span class="hd-sys-val"><span class="hd-sys-dot" id="sysDotRwLive"></span><span id="sysValRwLive">Checking...</span></span></div>
+          <div class="hd-sys-row"><span>ThreatFox</span><span class="hd-sys-val"><span class="hd-sys-dot hd-ok"></span><span>Free API</span></span></div>
+          <div class="hd-sys-row"><span>Database</span><span class="hd-sys-val"><span class="hd-sys-dot hd-ok"></span><span>Connected</span></span></div>
+          <div class="hd-sys-row"><span>Last RW Update</span><span class="hd-sys-val" id="sysRwUpdate" style="font-family:var(--mono);font-size:.68rem">-</span></div>
+          <div class="hd-sys-row"><span>Logged in as</span><span class="hd-sys-val">{{ username }}</span></div>
+        </div>
+      </div>
     </div>
-    <div class="hd-card">
-      <div class="hd-card-hdr"><div class="hd-card-title">TOOL System Status</div></div>
-      <div class="hd-card-body">
-        <div class="hd-sys-row"><span>Tor Crawler</span><span class="hd-sys-val"><span class="hd-sys-dot" id="sysDotCrawler"></span><span id="sysValCrawler">Checking...</span></span></div>
-        <div class="hd-sys-row"><span>ransomware.live PRO</span><span class="hd-sys-val"><span class="hd-sys-dot" id="sysDotRwLive"></span><span id="sysValRwLive">Checking...</span></span></div>
-        <div class="hd-sys-row"><span>ThreatFox</span><span class="hd-sys-val"><span class="hd-sys-dot hd-ok"></span><span>Free API</span></span></div>
-        <div class="hd-sys-row"><span>Database</span><span class="hd-sys-val"><span class="hd-sys-dot hd-ok"></span><span>Connected</span></span></div>
-        <div class="hd-sys-row"><span>Last RW Update</span><span class="hd-sys-val" id="sysRwUpdate" style="font-family:var(--mono);font-size:.68rem">-</span></div>
-        <div class="hd-sys-row"><span>Logged in as</span><span class="hd-sys-val">{{ username }}</span></div>
+    <div class="hd-card hd-predictive-card" style="margin-top:14px">
+      <div class="hd-card-hdr">
+        <div class="hd-card-title">Predictive Threat Level</div>
+        <div style="font-size:.65rem;color:var(--muted)">NLP-scored dark-web hits &bull; 7-day hit forecast</div>
+      </div>
+      <div class="hd-card-body" id="hdPredictivePanel" style="display:flex;flex-direction:column;gap:8px">
+        <div class="hd-empty"><div class="icon">🛡️</div><p>Loading threat model...</p></div>
       </div>
     </div>
   </div>
@@ -1380,6 +1448,7 @@
       <div style="display:flex;gap:8px">
         <button class="btn btn-secondary" onclick="loadPasteHits()"> Refresh</button>
         <button class="btn btn-primary admin-only" onclick="triggerPasteScan()" id="pasteScanBtn">> Scan Now</button>
+        <button class="btn btn-success admin-only" onclick="triggerPasteScrape()"> Full Scraper</button>
       </div>
     </div>
 
@@ -1389,6 +1458,26 @@
     <!-- Hits table -->
     <div id="pasteHitsContainer">
       <div class="empty"><div class="icon">PST</div><p>No paste hits yet. Click Scan Now to start monitoring.</p></div>
+    </div>
+  </div>
+
+  <!--  Breach Directory Tab  -->
+  <div class="tab-panel" id="panel-breach-directory">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:1.05rem;font-weight:700">Breach Directory</div>
+      <div style="font-size:.78rem;color:var(--muted);margin-top:2px">Historical &amp; recent Kenyan ransomware victims from ransomware.live</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="runBreachBackfill(this)"> Backfill History</button>
+        <button class="btn btn-secondary" onclick="loadBreachDirectory()"> Refresh</button>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div id="breachStatsRow" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px"></div>
+
+    <!-- Breach grid -->
+    <div id="breachGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:20px;">
+      <div class="empty"><div class="icon"></div><p>Loading breach directory...</p></div>
     </div>
   </div>
 
@@ -1825,16 +1914,6 @@
     </div>
   </div>
 
-  <div class="hd-card hd-predictive-card" style="margin-top:14px">
-    <div class="hd-card-hdr">
-      <div class="hd-card-title">Predictive Threat Level</div>
-      <div style="font-size:.65rem;color:var(--muted)">NLP-scored dark-web hits &bull; 7-day hit forecast</div>
-    </div>
-    <div class="hd-card-body" id="hdPredictivePanel" style="display:flex;flex-direction:column;gap:8px">
-      <div class="hd-empty"><div class="icon">🛡️</div><p>Loading threat model...</p></div>
-    </div>
-  </div>
-
 </main>
 
 <div id="toast"></div>
@@ -1899,65 +1978,6 @@
   });
 });
 
-function switchTab(name, evt) {
-  if (evt) evt.preventDefault();
-
-  // Remove active state from every nav item (old tabs + new dropdown links)
-  document.querySelectorAll('.nav-item, .nav-dropdown-menu a, .hd-nav-item').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-panel, [id^="panel-"], [id^="tab-"]').forEach(el => el.classList.remove('active'));
-
-  // Highlight the clicked nav item (works for both old tabs and dropdowns)
-  const clicked = document.querySelector(`[data-tab="${name}"]`);
-  if (clicked) {
-    clicked.classList.add('active');
-    const parentDropdown = clicked.closest('.nav-dropdown');
-    if (parentDropdown) parentDropdown.querySelector('.nav-item')?.classList.add('active');
-  }
-
-  // Try every plausible panel ID naming convention
-  const candidates = [
-    'panel-' + name,
-    'panel-' + name.replace(/-/g, ''),
-    'panel-' + name.replace(/-/g, '_'),
-    'tab-' + name,
-    'tab-' + name.replace(/-/g, ''),
-    name,
-    name.replace(/-/g, ''),
-    'panel-' + name.replace('threat-actors', 'threatactors'),
-    'panel-' + name.replace('ioc-feed', 'iocs'),
-    'panel-' + name.replace('ip-lookup', 'iplookup'),
-    'panel-' + name.replace('quick-scan', 'quickscan'),
-    'panel-' + name.replace('web-check', 'webcheck'),
-    'panel-' + name.replace('osint-toolkit', 'osint'),
-    'panel-' + name.replace('channel-monitor', 'channelmonitor'),
-    'panel-' + name.replace('paste-monitor', 'pastemonitor'),
-  ];
-
-  let panel = null;
-  for (const id of candidates) {
-    panel = document.getElementById(id);
-    if (panel) { console.log('switchTab: found panel', id, 'for tab', name); break; }
-  }
-
-  if (!panel) {
-    console.warn('switchTab: no panel found for', name, '- tried:', candidates.join(', '));
-    return;
-  }
-
-  panel.classList.add('active');
-
-  // Load tab-specific data when opening the tab
-  if (name === 'threat-actors' || name === 'threatactors') {
-    if (typeof loadThreatActors === 'function') loadThreatActors();
-  } else if (name === 'ransomware') {
-    if (typeof loadRansomware === 'function') loadRansomware();
-  } else if (name === 'ioc-feed' || name === 'iocs') {
-    if (typeof loadIOCs === 'function') loadIOCs();
-  } else if (name === 'ip-lookup') {
-    if (typeof loadIPLookup === 'function') loadIPLookup();
-  }
-}
-
   //  Stats 
   async function fetchStats() {
     try {
@@ -1970,7 +1990,7 @@ function switchTab(name, evt) {
         el.innerHTML = '<span style="color:var(--muted);font-size:.84rem;padding:4px">No hits yet.</span>';
       } else {
         el.innerHTML = data.top_keywords.map(k =>
-          `<div class="kw-pill" onclick="filterSession('${esc(k.keyword)}')">${esc(k.keyword)}<span class="count">${k.count}</span></div>`
+          `<div class="kw-pill" onclick="showKeywordPrediction('${esc(k.keyword)}')">${esc(k.keyword)}<span class="count">${k.count}</span></div>`
         ).join('');
       }
     } catch(e) { document.getElementById('statusDot').style.background='var(--red)'; }
@@ -2137,14 +2157,16 @@ function switchTab(name, evt) {
     const inner = document.getElementById(`sess-inner-${id}`);
     inner.innerHTML = 'Loading hits...';
     try {
-      const hits = await (await fetch(`/api/sessions/${id}/hits`)).json();
+      const resp = await fetch(`/api/sessions/${id}/hits`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const hits = await resp.json();
       if (!hits.length) { inner.innerHTML = '<p style="color:var(--muted);font-size:.83rem;padding:8px 0">No keyword hits in this session.</p>'; return; }
       inner.innerHTML = `<table style="margin:8px 0">
-        <thead><tr><th>Keyword</th><th>Category</th><th>URL</th><th>Context</th><th>Found At</th></tr></thead>
+        <thead><tr><th>Keyword</th><th>Category</th><th>Source URL</th><th>Context</th><th>Found At</th></tr></thead>
         <tbody>${hits.map(h => `<tr>
           <td><span class="keyword-tag">${esc(h.keyword)}</span></td>
           <td><span class="cat-tag">${esc(h.category)}</span></td>
-          <td class="url-cell">${esc(h.url)}</td>
+          <td class="url-cell"><a href="${esc(h.source_url || h.url)}" target="_blank" rel="noopener noreferrer">${esc(h.source_url || h.url)}</a></td>
           <td class="ctx-cell">${esc((h.context||'').slice(0,200))}</td>
           <td class="time-cell">${fmtTime(h.found_at)}</td>
         </tr>`).join('')}</tbody>
@@ -2152,7 +2174,103 @@ function switchTab(name, evt) {
     } catch(e) { inner.innerHTML = '<p style="color:var(--red)">Error loading hits.</p>'; }
   }
 
-  function filterSession(kw) { /* future: filter sessions by keyword */ }
+  function showKeywordPrediction(kw) {
+    const overlay = document.getElementById('predictionOverlay');
+    const modal = document.getElementById('predictionModal');
+    const title = document.getElementById('predictionTitle');
+    const summary = document.getElementById('predictionSummary');
+    const chartEl = document.getElementById('predictionChart');
+
+    if (!overlay || !title || !summary || !chartEl) {
+      console.error('Prediction modal elements missing:', { overlay, title, summary, chartEl });
+      return;
+    }
+
+    title.textContent = `Attack Prediction — ${esc(kw)}`;
+    summary.innerHTML = '<p style="color:var(--muted)">Loading prediction data...</p>';
+    chartEl.innerHTML = '<canvas id="predictionCanvas"></canvas>';
+    overlay.classList.add('open');
+
+    fetch(`/api/analytics/predict?keyword=${encodeURIComponent(kw)}`)
+      .then(async r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return await r.json();
+      })
+      .then(data => {
+        const trendClass = `prediction-trend-${data.trend.replace('_', '-')}`;
+        summary.innerHTML = `
+          <div class="prediction-summary">
+            <h3>${esc(data.keyword)}</h3>
+            <p><strong>Trend:</strong> <span class="prediction-trend-badge ${trendClass}">${data.trend.replace('_', ' ')}</span>
+            <strong>Confidence:</strong> ${data.confidence_score}% | <strong>Method:</strong> ${data.method || 'baseline'}</p>
+            <p>${data.simulated
+              ? `No historical dark-web data for <strong>${esc(data.keyword)}</strong> yet. Showing a simulated baseline (${data.months_analyzed} months). Run the paste scraper to collect real data.`
+              : data.months_analyzed < 3
+                ? `Limited historical data (${data.months_analyzed} months). Based on available data, attacks against <strong>${esc(data.keyword)}</strong> are trending <strong>${data.trend}</strong>. We predict <strong>${data.prediction_next_month}</strong> attacks in the next 30 days.`
+                : `Based on historical dark-web data, attacks against <strong>${esc(data.keyword)}</strong> are trending <strong>${data.trend}</strong>. We predict <strong>${data.prediction_next_month}</strong> attacks in the next 30 days.`}
+            </p>
+          </div>
+        `;
+
+        // Chart.js line chart — distinguish real vs simulated points
+        const canvasEl = document.getElementById('predictionCanvas');
+        if (!canvasEl) return;
+        const ctx = canvasEl.getContext('2d');
+        const labels = data.monthly_data.map(d => d.month);
+        const values = data.monthly_data.map(d => d.count);
+        const isSimulated = data.monthly_data.map(d => d.simulated === true);
+
+        // Append predicted next month
+        const lastMonth = labels[labels.length - 1] || '';
+        const predLabel = lastMonth ? lastMonth + ' +1' : 'Next Month';
+        const chartLabels = [...labels, predLabel];
+        const chartValues = [...values, data.prediction_next_month];
+
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: chartLabels,
+            datasets: [{
+              label: data.simulated ? 'Simulated baseline' : 'Historical attacks',
+              data: values.concat([null]),
+              borderColor: data.simulated ? '#d29922' : '#58a6ff',
+              backgroundColor: data.simulated ? 'rgba(210,153,34,.1)' : 'rgba(88,166,255,.1)',
+              borderWidth: 2,
+              borderDash: data.simulated ? [4, 4] : undefined,
+              pointRadius: 4,
+              fill: false,
+              tension: 0.3,
+            }, {
+              label: 'Predicted',
+              data: [null, ...values.slice(1), data.prediction_next_month],
+              borderColor: '#bc8cff',
+              borderDash: [6, 4],
+              borderWidth: 2,
+              pointRadius: 4,
+              pointBackgroundColor: '#bc8cff',
+              fill: false,
+              tension: 0.3,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top', labels: { color: '#e6edf3', font: { size: 11 } } },
+              title: { display: false }
+            },
+            scales: {
+              x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#30363d' } },
+              y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#30363d' }, beginAtZero: true }
+            }
+          }
+        });
+      })
+      .catch(e => {
+        summary.innerHTML = '<p style="color:var(--red)">Error loading prediction data.</p>';
+        console.error('Prediction error:', e);
+      });
+  }
 
   //  Keywords
   async function loadKeywords() {
@@ -2160,35 +2278,46 @@ function switchTab(name, evt) {
     try {
       const res = await fetch('/api/keywords');
       const data = await res.json();
-      // The API returns a flat array of {keyword, category, severity}.
+      // The API returns a flat array of {keyword, category, severity, count, predictability}.
       const rows = Array.isArray(data) ? data : (data && data.keywords) || [];
       if (!rows.length) {
-        el.innerHTML = '<div class="empty"><div class="icon">KEY</div><p>No keywords yet.</p></div>';
+        el.innerHTML = '<div class="empty"><div class="icon">KEY</div><p>No keywords found. Click \'Full Scraper\' to populate.</p></div>';
         return;
       }
-      const groups = {};
-      rows.forEach(r => {
-        const cat = (r && r.category) || 'custom';
-        (groups[cat] = groups[cat] || []).push(r);
-      });
-      el.innerHTML = Object.entries(groups).map(([cat, kws]) => `
-        <div class="kw-category" data-cat="${escAttr(cat).toLowerCase()}" style="margin-bottom:18px">
-          <div class="section-title">${esc(cat)}</div>
-          <table><thead><tr><th>Keyword</th><th style="width:80px">Action</th></tr></thead>
-          <tbody>${kws.map(r => {
-              const kw = (r && r.keyword) || '';
-              const cat2 = (r && r.category) || 'custom';
-              const sev = (r && r.severity) || '';
-              return `<tr class="kw-row" data-kw="${escAttr(kw).toLowerCase()}" data-cat="${escAttr(cat2).toLowerCase()}">
-            <td><span class="keyword-tag">${esc(kw)}</span>${sev ? ` <span style="font-size:.62rem;color:var(--muted);margin-left:6px">${esc(sev)}</span>` : ''}</td>
-            <td><button class="btn btn-danger" data-del-kw="${escAttr(kw)}" data-del-cat="${escAttr(cat2)}">Remove</button></td>
-          </tr>`;
-            }).join('')}</tbody></table>
-        </div>`).join('');
+      // Sort by count desc
+      rows.sort((a, b) => (b.count || 0) - (a.count || 0));
+      el.innerHTML = rows.map(r => {
+        const kw = (r && r.keyword) || '';
+        const count = (r && r.count) || 0;
+        const pred = (r && r.predictability) || 0;
+        const predClass = pred < 34 ? 'kw-pred-low' : (pred < 66 ? 'kw-pred-med' : 'kw-pred-high');
+        const level = pred < 34 ? 'Low' : (pred < 66 ? 'Medium' : 'High');
+        const sourcesList = (r && r.sources) || [];
+        const evidence = (r && r.evidence) || '';
+        const titleText = `Sources: ${sourcesList.join(', ')}\nContext: ${evidence}`;
+        return `<span class="kw-pill" title="${esc(titleText)}" data-kw="${esc(kw)}" data-sources="${esc(sourcesList.join(', '))}" data-evidence="${esc(evidence)}" onclick="showKeywordEvidence(this)">
+          <span class="kw-domain">${esc(kw)}</span>
+          <span class="kw-sep"> </span>
+          <span class="kw-count">${count}</span>
+          <span class="kw-sep"> - </span>
+          <span class="kw-pred ${predClass}">${pred}%</span>
+          <span class="kw-sep"> </span>
+          <span class="kw-level">(${level})</span>
+        </span>`;
+      }).join('');
     } catch(e) {
       el.innerHTML = '<div class="empty" style="color:var(--red)">Error: ' + esc(String((e && e.message) || e)) + '</div>';
       console.error('[loadKeywords]', e);
     }
+  }
+
+  //  Show keyword evidence (sources + context) in an alert modal
+  function showKeywordEvidence(pill) {
+    const kw = pill.getAttribute('data-kw') || '';
+    const sources = pill.getAttribute('data-sources') || '';
+    const evidence = pill.getAttribute('data-evidence') || '';
+    const msg = `Keyword: ${kw}\n\nSources: ${sources || '—'}\n\nContext: ${evidence || '—'}`;
+    alert(msg);
   }
 
   // One delegated handler for the Remove buttons (avoids quoting issues in
@@ -2612,34 +2741,61 @@ function switchTab(name, evt) {
       apiFetch(url),
       apiFetch('/api/paste/stats'),
     ]);
+    console.log("Paste Data:", hits);
+    console.log('[Paste] API response:', { hits, stats });
+
+    // Normalize: API may return a bare list or {hits: [...]}
+    let hitsArr = hits;
+    if (hits && !Array.isArray(hits) && hits.hits) hitsArr = hits.hits;
+    if (!Array.isArray(hitsArr)) hitsArr = [];
 
     renderPasteStats(stats);
-    renderPasteHits(hits || []);
+    renderPasteHits(hitsArr);
   }
 
   function filterPasteHits() { loadPasteHits(); }
 
   function renderPasteStats(stats) {
-    if (!stats) return;
+    if (!stats) {
+      console.warn('[Paste] No stats data received');
+      return;
+    }
     const row = document.getElementById('pasteStatsRow');
+    if (!row) return;
     row.innerHTML = `
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px">
         <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Total Hits</div>
-        <div style="font-size:1.5rem;font-weight:700;color:var(--accent)">${stats.total_hits || 0}</div>
+        <div style="font-size:1.5rem;font-weight:700;color:var(--accent)">${Number(stats.total_hits || 0)}</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px">
         <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Pastes Scanned</div>
-        <div style="font-size:1.5rem;font-weight:700">${stats.total_scanned || 0}</div>
+        <div style="font-size:1.5rem;font-weight:700">${Number(stats.total_scanned || 0)}</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px">
         <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Pastes w/ Hits</div>
-        <div style="font-size:1.5rem;font-weight:700;color:#d29922">${stats.total_with_hits || 0}</div>
+        <div style="font-size:1.5rem;font-weight:700;color:#d29922">${Number(stats.total_with_hits || 0)}</div>
       </div>
       ${(stats.by_source || []).map(s => `
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px">
         <div style="font-size:.72rem;color:var(--muted);text-transform:uppercase;margin-bottom:4px">${s.source}</div>
-        <div style="font-size:1.5rem;font-weight:700;color:${PASTE_SOURCE_COLORS[s.source]||'var(--text)'}">${s.count}</div>
+        <div style="font-size:1.5rem;font-weight:700;color:${PASTE_SOURCE_COLORS[s.source]||'var(--text)'}">${Number(s.count)}</div>
       </div>`).join('')}`;
+  }
+
+  //  Format a Kenyan phone number using kenya-utils (parsePhone)
+  function formatKePhone(value) {
+    if (!value || typeof window.KenyaUtils === 'undefined') return value;
+    try {
+      const parsed = window.KenyaUtils.parsePhone(value);
+      if (!parsed) return value;
+      const netColor = parsed.network === 'Safaricom' ? '#007A3D' :
+                       parsed.network === 'Airtel' ? '#ED1C24' :
+                       parsed.network === 'Telkom' ? '#2A7DE0' :
+                       parsed.network === 'Equitel' ? '#1E9E46' :
+                       parsed.network === 'Faiba' ? '#F0A6FF' : '#8b949e';
+      return `<span style="font-family:var(--mono);font-size:.8rem">${esc(parsed.national)}</span>
+        <span style="background:rgba(${netColor.replace('#','')},.15);color:${netColor};padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:700;margin-left:4px">${parsed.network}</span>`;
+    } catch(e) { return value; }
   }
 
   function renderPasteHits(hits) {
@@ -2659,7 +2815,7 @@ function switchTab(name, evt) {
       </tr></thead>
       <tbody>${hits.map(h => `<tr>
         <td><span style="background:rgba(56,139,253,.15);color:#58a6ff;padding:2px 8px;border-radius:4px;font-size:.75rem;white-space:nowrap">${PASTE_PATTERN_LABELS[h.matched_pattern] || h.matched_pattern}</span></td>
-        <td style="font-family:monospace;font-size:.8rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${h.matched_value||''}">${h.matched_value || '-'}</td>
+        <td style="font-family:monospace;font-size:.8rem;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${h.matched_value||''}">${h.matched_pattern === 'ke_mobile' ? formatKePhone(h.matched_value) : (h.matched_value || '-')}</td>
         <td><span style="background:${PASTE_SOURCE_COLORS[h.source]||'var(--surface)'}22;color:${PASTE_SOURCE_COLORS[h.source]||'var(--muted)'};padding:2px 8px;border-radius:4px;font-size:.75rem">${h.source}</span></td>
         <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
           <a href="${h.url}" target="_blank" style="color:var(--accent);font-size:.78rem">${h.url.replace('https://','')}</a>
@@ -2682,6 +2838,29 @@ function switchTab(name, evt) {
       loadPasteHits();
     } else {
       toast('Scan failed - check logs');
+    }
+  }
+
+  async function triggerPasteScrape() {
+    const btn = document.querySelector('button[onclick="triggerPasteScrape()"]');
+    if (btn) { btn.disabled = true; btn.textContent = ' Scraping...'; }
+    toast('Running full paste scraper - this may take 60-120 seconds');
+    try {
+      const result = await apiFetch('/api/paste/scrape', 'POST');
+      if (btn) { btn.disabled = false; btn.textContent = ' Full Scraper'; }
+      if (result && result.ok) {
+        const s = result.scraped || {};
+        const k = result.keywords || {};
+        toast(`Scraper complete - ${s.new_pastes} new pastes, ${s.hits} hits, ${k.keywords_added} new keywords`);
+        loadPasteHits();
+        // Also refresh keywords if on the keywords tab
+        if (typeof loadKeywords === 'function') loadKeywords();
+      } else {
+        toast('Scraper failed - check logs');
+      }
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = ' Full Scraper'; }
+      toast('Scraper error - check logs');
     }
   }
 
@@ -3132,20 +3311,14 @@ function switchTab(name, evt) {
 
   function filterKeywords() {
     const q = (document.getElementById('keywordSearch')?.value || '').toLowerCase();
-    if (!document.querySelector('#keywordsList .kw-row')) { loadKeywords(); return; }
+    if (!document.querySelector('#keywordsList .kw-pill')) { loadKeywords(); return; }
     if (!q) {
-      document.querySelectorAll('#keywordsList .kw-row').forEach(r => r.style.display = '');
-      document.querySelectorAll('#keywordsList .kw-category').forEach(c => c.style.display = '');
+      document.querySelectorAll('#keywordsList .kw-pill').forEach(r => r.style.display = '');
       return;
     }
-    document.querySelectorAll('#keywordsList .kw-category').forEach(cat => {
-      let anyVisible = false;
-      cat.querySelectorAll('.kw-row').forEach(row => {
-        const match = (row.dataset.kw || '').includes(q) || (cat.dataset.cat || '').includes(q);
-        row.style.display = match ? '' : 'none';
-        if (match) anyVisible = true;
-      });
-      cat.style.display = anyVisible ? '' : 'none';
+    document.querySelectorAll('#keywordsList .kw-pill').forEach(pill => {
+      const match = (pill.title || '').toLowerCase().includes(q);
+      pill.style.display = match ? '' : 'none';
     });
   }
   async function stopCrawl() {
@@ -3560,11 +3733,122 @@ function switchTab(name, evt) {
     const grid = document.getElementById('ransomwareGrid');
     grid.innerHTML = '<div class="empty"><div class="icon"></div><p>Loading intelligence...</p></div>';
     try {
-      rwData = await (await fetch('/api/ransomware/groups')).json();
+      const raw = await (await fetch('/api/ransomware/groups')).json();
+      console.log('[loadRansomware] raw API response:', raw);
+      // Backend returns a plain array; defend against a wrapped {data: [...]} shape.
+      rwData = Array.isArray(raw) ? raw : (raw && (raw.data || raw.groups)) || [];
+      console.log('[loadRansomware] normalized rwData count:', rwData.length);
       renderRansomware();
     } catch(e) {
+      console.error('[loadRansomware] error:', e);
       grid.innerHTML = '<div class="empty"><div class="icon"></div><p>Failed to load.</p></div>';
     }
+  }
+
+  //  Breach Directory 
+  let breachData = [];
+
+  async function runBreachBackfill(btn) {
+    if (!confirm('Fetch ALL historical Kenyan ransomware victims from ransomware.live? This may take a minute.')) return;
+    if (btn) { btn.disabled = true; btn.textContent = ' Backfilling...'; }
+    try {
+      const res = await fetch('/api/breaches/backfill', { method: 'POST' });
+      const d = await res.json();
+      if (d.error) {
+        toast(d.error, 'error');
+      } else {
+        toast(`Backfill complete: ${d.new_hits || 0} new breaches (${d.scanned || 0} scanned)`);
+      }
+      loadBreachDirectory();
+    } catch(e) {
+      console.error('[runBreachBackfill]', e);
+      toast('Backfill failed', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = ' Backfill History'; }
+    }
+  }
+
+  async function loadBreachDirectory() {
+    const grid = document.getElementById('breachGrid');
+    const statsRow = document.getElementById('breachStatsRow');
+    if (!grid) return;
+    grid.innerHTML = '<div class="empty"><div class="icon"></div><p>Loading breach directory...</p></div>';
+    try {
+      const raw = await (await fetch('/api/breaches/directory')).json();
+      console.log('[loadBreachDirectory] raw API response:', raw);
+      breachData = Array.isArray(raw) ? raw : (raw && (raw.breaches || raw.data)) || [];
+      renderBreachDirectory(raw && !Array.isArray(raw) ? raw : { breaches: breachData });
+    } catch(e) {
+      console.error('[loadBreachDirectory] error:', e);
+      grid.innerHTML = '<div class="empty"><div class="icon"></div><p>Failed to load breach directory.</p></div>';
+    }
+  }
+
+  function renderBreachDirectory(payload) {
+    const grid = document.getElementById('breachGrid');
+    const statsRow = document.getElementById('breachStatsRow');
+    const breaches = (payload && payload.breaches) || [];
+    const totalBreaches = (payload && payload.total_breaches) != null
+      ? payload.total_breaches : breaches.length;
+    const totalRecords = (payload && payload.total_records_exposed) != null
+      ? payload.total_records_exposed : 0;
+    const yearsTracked = (payload && payload.years_tracked) != null
+      ? payload.years_tracked : 0;
+
+    //  Stats row 
+    if (statsRow) {
+      statsRow.innerHTML = `
+        <div class="stat-card">
+          <div class="lbl">Total Breaches</div>
+          <div class="val" style="color:var(--red)">${Number(totalBreaches).toLocaleString()}</div>
+        </div>
+        <div class="stat-card">
+          <div class="lbl">Records Exposed</div>
+          <div class="val" style="color:var(--orange)">${Number(totalRecords).toLocaleString()}</div>
+        </div>
+        <div class="stat-card">
+          <div class="lbl">Years Tracked</div>
+          <div class="val" style="color:var(--accent)">${Number(yearsTracked).toLocaleString()}</div>
+        </div>`;
+    }
+
+    if (!breaches.length) {
+      grid.innerHTML = '<div class="empty"><div class="icon"></div><p>No breaches found. Click Full Scraper to populate.</p></div>';
+      return;
+    }
+
+    //  Breach cards 
+    grid.innerHTML = breaches.map(b => {
+      const badges = String(b.status_badges || 'RANSOMWARE').split(',')
+        .map(s => s.trim()).filter(Boolean)
+        .map(s => {
+          const cls = s === 'RANSOMWARE' ? 'badge-critical'
+                   : s === 'CREDIBLE' ? 'badge-active'
+                   : s === 'KENYA' ? 'badge-ke'
+                   : 'badge-disrupted';
+          return `<span class="intel-badge ${cls}">${esc(s)}</span>`;
+        }).join('');
+
+      const leakUrl = b.leak_url || '';
+      const dateStr = b.date ? String(b.date).slice(0, 10) : '—';
+      const records = Number(b.records_exposed || 0).toLocaleString();
+
+      return `
+      <div class="intel-card" style="border-left:3px solid var(--red)">
+        <div class="intel-badges">${badges}</div>
+        <div class="intel-card-name" style="color:var(--text);font-weight:700;font-size:1rem;margin-bottom:6px">${esc(b.title || 'Unknown')}</div>
+        <div class="intel-desc" style="display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:3.6em">${esc(b.description || '')}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap">
+          <a href="${esc(leakUrl)}" target="_blank" rel="noopener noreferrer"
+             class="btn" style="background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3);font-size:.76rem;padding:5px 12px;text-decoration:none">🔗 View Dark Web Leak</a>
+          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${records} records</span>
+        </div>
+        <div class="intel-hits" style="margin-top:0;padding-top:10px">
+          <span style="font-size:.74rem;color:var(--muted)">${esc(b.sector || 'Unknown')}</span>
+          <span style="font-size:.74rem;color:var(--muted);margin-left:auto;font-family:var(--mono)">${esc(dateStr)}</span>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   function filterRwRisk(risk, btn) {
@@ -3576,6 +3860,16 @@ function switchTab(name, evt) {
 
   function filterRansomware() { renderRansomware(); }
 
+  //  Normalises the victim list, which is stored under two different keys
+  //  depending on the source dataset: the static ransomware_data uses
+  //  "sea_victims" for most groups but "ke_victims" for others, and custom
+  //  entries are stored under "sea_victims". Accept either so every card
+  //  and modal renders its victims.
+  function intelVictims(d) {
+    if (!d) return [];
+    return d.sea_victims || d.ke_victims || [];
+  }
+
   function renderRansomware() {
     const q = (document.getElementById('rwSearch')?.value || '').toLowerCase();
     let data = rwData.filter(g => {
@@ -3583,7 +3877,7 @@ function switchTab(name, evt) {
       if (rwRiskFilter === 'critical') return g.risk_level === 'critical';
       if (rwRiskFilter === 'high') return g.risk_level === 'high';
       if (rwRiskFilter === 'disrupted') return g.status === 'disrupted';
-      if (rwRiskFilter === 'ke') return g.targeting_ke;
+      if (rwRiskFilter === 'ke') return g.targeting_sea;
       if (rwRiskFilter === 'hits') return g.hit_count > 0;
       return true;
     });
@@ -3606,8 +3900,8 @@ function switchTab(name, evt) {
         <div class="intel-badges">
           <span class="intel-badge badge-${g.risk_level}">${g.risk_level.toUpperCase()}</span>
           <span class="intel-badge badge-${g.status}">${g.status.toUpperCase()}</span>
-          ${g.targeting_ke ? '<span class="intel-badge badge-ke"> KE</span>' : ''}
-          ${g.ke_victims?.length ? `<span class="intel-badge badge-high">[!] ${g.ke_victims.length} victim${g.ke_victims.length > 1 ? 's' : ''}</span>` : ''}
+          ${g.targeting_sea ? '<span class="intel-badge badge-ke"> KE</span>' : ''}
+          ${intelVictims(g).length ? `<span class="intel-badge badge-high">[!] ${intelVictims(g).length} victim${intelVictims(g).length > 1 ? 's' : ''}</span>` : ''}
         </div>
         <div class="intel-desc">${esc(g.description.length > 160 ? g.description.slice(0,160)+'...' : g.description)}</div>
         <div class="intel-ttps">${(g.ttps||[]).slice(0,4).map(t => `<span class="ttp-tag">${esc(t)}</span>`).join('')}${(g.ttps||[]).length > 4 ? `<span class="ttp-tag" style="color:var(--accent)">+${g.ttps.length-4} more</span>` : ''}</div>
@@ -3669,7 +3963,7 @@ function switchTab(name, evt) {
     const badgeHtml = [
       `<span class="intel-badge badge-${d.risk_level}">${d.risk_level.toUpperCase()}</span>`,
       `<span class="intel-badge badge-${d.status === 'active' ? 'active' : 'disrupted'}">${d.status.toUpperCase()}</span>`,
-      d.targeting_ke ? '<span class="intel-badge badge-ke"> KE</span>' : '',
+      d.targeting_sea ? '<span class="intel-badge badge-ke"> KE</span>' : '',
       d.type ? `<span class="intel-badge badge-type">${esc(d.type)}</span>` : '',
     ].filter(Boolean).join('');
     document.getElementById('modalBadges').innerHTML = `<div class="intel-badges" style="margin:0">${badgeHtml}</div>`;
@@ -3712,11 +4006,12 @@ function switchTab(name, evt) {
       </div>`;
     }
 
-    // KE Victims (ransomware)
-    if (d.ke_victims?.length) {
+    // Known East Africa victims (ransomware)
+    const _victims = intelVictims(d);
+    if (_victims.length) {
       html += `<div class="intel-modal-section">
         <div class="intel-modal-section-title">[!] Known East Africa Victims</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">${d.ke_victims.map(v => `<span style="font-size:.78rem;color:var(--red);background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.2);padding:3px 8px;border-radius:4px">${esc(v)}</span>`).join('')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${_victims.map(v => `<span style="font-size:.78rem;color:var(--red);background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.2);padding:3px 8px;border-radius:4px">${esc(v)}</span>`).join('')}</div>
       </div>`;
     }
 
@@ -3761,6 +4056,14 @@ function switchTab(name, evt) {
   }
   function closeIntelModalDirect() {
     document.getElementById('intelDetailOverlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function closePredictionModal(e) {
+    if (e.target === document.getElementById('predictionOverlay')) closePredictionModalDirect();
+  }
+  function closePredictionModalDirect() {
+    document.getElementById('predictionOverlay').classList.remove('open');
     document.body.style.overflow = '';
   }
 
@@ -3895,11 +4198,11 @@ function switchTab(name, evt) {
       name: get('ai_name'), slug: get('ai_slug'), origin: get('ai_origin'),
       first_seen: get('ai_first_seen'), status: get('ai_status'),
       risk_level: get('ai_risk_level'), description: get('ai_description'),
-      targeting_ke: checked('ai_targeting_ke'),
+      targeting_sea: checked('ai_targeting_ke'),
       ttps: get('ai_ttps'), keywords: get('ai_keywords'),
     };
     if (isRw) {
-      body.ke_victims = get('ai_ke_victims');
+      body.sea_victims = get('ai_ke_victims');
       body.onion_seeds = get('ai_onion_seeds');
     } else {
       body.type = get('ai_type');
@@ -3944,9 +4247,14 @@ function switchTab(name, evt) {
     const grid = document.getElementById('threatActorsGrid');
     grid.innerHTML = '<div class="empty"><div class="icon"></div><p>Loading profiles...</p></div>';
     try {
-      taData = await (await fetch('/api/threat-actors')).json();
+      const raw = await (await fetch('/api/threat-actors')).json();
+      console.log('[loadThreatActors] raw API response:', raw);
+      // Backend returns a plain array; defend against a wrapped {data: [...]} shape.
+      taData = Array.isArray(raw) ? raw : (raw && (raw.data || raw.actors)) || [];
+      console.log('[loadThreatActors] normalized taData count:', taData.length);
       renderThreatActors();
     } catch(e) {
+      console.error('[loadThreatActors] error:', e);
       grid.innerHTML = '<div class="empty"><div class="icon"></div><p>Failed to load.</p></div>';
     }
   }
@@ -3967,7 +4275,7 @@ function switchTab(name, evt) {
       if (taTypeFilter === 'nation-state') return a.type === 'nation-state';
       if (taTypeFilter === 'cybercriminal') return a.type === 'cybercriminal';
       if (taTypeFilter === 'hacktivist') return a.type === 'hacktivist';
-      if (taTypeFilter === 'ke') return a.targeting_ke;
+      if (taTypeFilter === 'ke') return a.targeting_sea;
       if (taTypeFilter === 'hits') return a.hit_count > 0;
       return true;
     });
@@ -3992,7 +4300,7 @@ function switchTab(name, evt) {
           <span class="intel-badge badge-${a.risk_level}">${a.risk_level.toUpperCase()}</span>
           <span class="intel-badge badge-type">${esc(a.type)}</span>
           <span class="intel-badge badge-${a.status === 'active' ? 'active' : 'disrupted'}">${a.status.toUpperCase()}</span>
-          ${a.targeting_ke ? '<span class="intel-badge badge-ke"> KE</span>' : ''}
+          ${a.targeting_sea ? '<span class="intel-badge badge-ke"> KE</span>' : ''}
         </div>
         ${a.aliases?.length ? `<div style="font-size:.71rem;color:var(--muted);margin-bottom:6px">Also known as: ${a.aliases.slice(0,3).map(al => esc(al)).join(', ')}${a.aliases.length > 3 ? ' +' + (a.aliases.length-3) + ' more' : ''}</div>` : ''}
         <div class="intel-desc">${esc(a.description.length > 160 ? a.description.slice(0,160)+'...' : a.description)}</div>
@@ -4172,20 +4480,26 @@ function switchTab(name, evt) {
     document.querySelectorAll('.dns-view-btn').forEach(b => b.classList.remove('active'));
     toggles.querySelectorAll('.dns-view-btn')[0].classList.add('active');
 
-    const r = data.result || {};
-    const dns = r.dns_records || {};
-    const zt = r.zone_transfer || {};
-    const email = r.email_security || {};
-    const resolved = r.subdomains_resolved || [];
-    const passive = r.subdomains_passive || [];
-    const bruteforce = r.subdomains_bruteforce || [];
-    const ipGeo = r.ip_geo || {};
-    const ptr = r.ptr_records || {};
+    // data IS the investigation dict (GET /api/dns/investigations/<id> returns it directly)
+    // DNS record data is nested under data.result; top-level fields are domain/status/counts.
+    const r = data || {};
+    const result = r.result || {};
+    // Guarantee the nested path exists for downstream helpers that read
+    // _dnsCurrent.result.* (graph reset, PDF export, port-scan re-render).
+    r.result = result;
+    const dns = result.dns_records || {};
+    const zt = result.zone_transfer || {};
+    const email = result.email_security || {};
+    const resolved = result.subdomains_resolved || [];
+    const passive = result.subdomains_passive || [];
+    const bruteforce = result.subdomains_bruteforce || [];
+    const ipGeo = result.ip_geo || {};
+    const ptr = result.ptr_records || {};
     const ztSuccess = Object.values(zt).some(v => v && v.success);
     const mainIPs = (dns.A||[]).concat(dns.AAAA||[]);
-    const portScan = r.port_scan || {};
-    const dirEnum = r.dir_enum || {};
-    const services = r.services || {};
+    const portScan = result.port_scan || {};
+    const dirEnum = result.dir_enum || {};
+    const services = result.services || {};
     const hasScanData = Object.keys(portScan).length > 0;
 
     // All unique subdomains with source tags
@@ -4439,10 +4753,10 @@ function switchTab(name, evt) {
     if (typeof jsVectorMap === 'undefined') {
       // Load jsvectormap JS then world map data, then init
       const s1 = document.createElement('script');
-      s1.src = 'https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/js/jsvectormap.min.js';
+      s1.src = 'https://unpkg.com/jsvectormap@1.5.3/dist/js/jsvectormap.min.js';
       s1.onload = () => {
         const s2 = document.createElement('script');
-        s2.src = 'https://cdn.jsdelivr.net/npm/jsvectormap@1.5.3/dist/maps/world.js';
+        s2.src = 'https://unpkg.com/jsvectormap@1.5.3/dist/maps/world.js';
         s2.onload = () => _renderJvMap(el);
         document.head.appendChild(s2);
       };
@@ -4646,77 +4960,117 @@ function switchTab(name, evt) {
   }
 
   //  Ports View 
+  function getPortService(portNum) {
+    const svc = {
+      '21':'FTP','22':'SSH','23':'Telnet','25':'SMTP','53':'DNS','80':'HTTP',
+      '110':'POP3','111':'RPC','135':'MSRPC','139':'NetBIOS','143':'IMAP',
+      '443':'HTTPS','445':'SMB','993':'IMAPS','995':'POP3S','1723':'PPTP',
+      '3306':'MySQL','3389':'RDP','5900':'VNC','8080':'HTTP-Proxy','8443':'HTTPS-Alt'
+    };
+    return svc[String(portNum)] || 'unknown';
+  }
+
   function buildPortsPanel(portScan, mainIPs, domain) {
-    const hasData = Object.keys(portScan).length > 0;
-    if (!hasData) {
+    // Backend returns: {target, ip, ports: {"21": "open", "80": "open", ...}}
+    const portsData = portScan && portScan.ports ? portScan.ports : {};
+    const hasScanRun = portScan && portScan.ports !== undefined;
+    const openPorts = [];
+    const filteredPorts = [];
+    const allPorts = [];
+    for (const [portNum, status] of Object.entries(portsData)) {
+      const portEntry = {port: portNum, status, service: getPortService(portNum)};
+      allPorts.push(portEntry);
+      if (status === 'open') openPorts.push(portEntry);
+      if (status === 'filtered') filteredPorts.push(portEntry);
+    }
+
+    // Scan hasn't run yet
+    if (!hasScanRun) {
+      const scanIP = portScan && portScan.ip ? portScan.ip : (mainIPs[0] || domain);
       return `<div style="text-align:center;padding:40px 20px">
         <div style="font-size:2rem;margin-bottom:12px"></div>
         <div style="font-weight:600;margin-bottom:6px">Port scan not yet run</div>
         <div style="color:var(--muted);font-size:.83rem;margin-bottom:16px">Click the button below to actively scan all resolved IPs for open ports.</div>
-        <button class="btn btn-primary" onclick="triggerPortScan(${_dnsCurrent?.id})"> Run Port Scan</button>
+        <button class="btn btn-primary" onclick="triggerPortScan(${_dnsCurrent?.id}, 'ports')"> Run Port Scan</button>
         <div style="margin-top:10px;font-size:.75rem;color:var(--muted)">Scans ${mainIPs.length} IPs across 30 common ports</div>
       </div>`;
     }
 
-    let h = '';
-    for (const [ip, ports] of Object.entries(portScan)) {
-      const open = ports.filter(p=>p.status==='open');
-      const filtered = ports.filter(p=>p.status==='filtered');
-      h += `<div class="is" style="margin-bottom:12px">
-        <div class="is-hdr" onclick="toggleIS(this)">
-          <span class="is-title">
-            <code style="color:var(--accent)">${esc(ip)}</code>
-            <span class="rc rc-ok">${open.length} open</span>
-            ${filtered.length?`<span class="rc rc-warn">${filtered.length} filtered</span>`:''}
-          </span>
-          <span style="color:var(--muted);font-size:.8rem"></span>
-        </div>
-        <div class="is-body">
-          <div class="port-heatmap">
-            ${ports.map(p=>`<div class="port-cell ${p.status}" title="${p.service} (${p.status})">
-              <div class="pn">${p.port}</div>
-              <div class="ps">${p.service}</div>
-            </div>`).join('')}
-          </div>
-          ${open.length?`<div style="margin-top:10px"><span style="font-size:.77rem;font-weight:600;color:var(--green)">Open ports: </span><span style="font-family:var(--mono);font-size:.77rem">${open.map(p=>`${p.port}/${p.service}`).join(', ')}</span></div>`:''}
-        </div>
+    // Scan ran but no open ports -> show "No open ports found"
+    if (Object.keys(portsData).length === 0) {
+      return `<div style="text-align:center;padding:40px 20px">
+        <div style="font-size:2rem;margin-bottom:12px"></div>
+        <div style="font-weight:600;margin-bottom:6px;color:var(--green)">No open ports found</div>
+        <div style="color:var(--muted);font-size:.83rem;margin-bottom:16px">All ${mainIPs.length} scanned IPs had all 30 common ports closed or filtered.</div>
+        <div style="margin-top:10px;font-size:.75rem;color:var(--muted)">Scans ${mainIPs.length} IPs across 30 common ports</div>
       </div>`;
     }
+
+    const scanIP = portScan && portScan.ip ? portScan.ip : (mainIPs[0] || domain);
+    let h = '';
+    h += `<div class="is" style="margin-bottom:12px">
+      <div class="is-hdr" onclick="toggleIS(this)">
+        <span class="is-title">
+          <code style="color:var(--accent)">${esc(scanIP)}</code>
+          <span class="rc rc-ok">${openPorts.length} open</span>
+          ${filteredPorts.length?`<span class="rc rc-warn">${filteredPorts.length} filtered</span>`:''}
+        </span>
+        <span style="color:var(--muted);font-size:.8rem">${allPorts.length} ports scanned</span>
+      </div>
+      <div class="is-body">
+        <div class="port-heatmap">
+          ${allPorts.map(p=>`<div class="port-cell ${p.status}" title="${p.service} (${p.status})">
+            <div class="pn">${p.port}</div>
+            <div class="ps">${p.service}</div>
+          </div>`).join('')}
+        </div>
+        ${openPorts.length?`<div style="margin-top:10px"><span style="font-size:.77rem;font-weight:600;color:var(--green)">Open ports: </span><span style="font-family:var(--mono);font-size:.77rem">${openPorts.map(p=>`${p.port}/${p.service}`).join(', ')}</span></div>`:''}
+      </div>
+    </div>`;
     return h;
   }
 
   //  Directories View 
   function buildDirsPanel(dirEnum, domain) {
-    const hasData = Object.keys(dirEnum).length > 0 && Object.values(dirEnum).some(a=>a.length>0);
-    if (!hasData) {
+    // Backend returns: {target, base, paths: {"/admin": 200, "/login": 404, ...}}
+    const pathsData = dirEnum && dirEnum.paths ? dirEnum.paths : {};
+    const interestingCodes = [200, 201, 301, 302, 401, 403, 500];
+    const interesting = Object.entries(pathsData)
+      .filter(([_, code]) => interestingCodes.includes(code))
+      .map(([path, code]) => ({path, status_code: code}));
+
+    // dirEnum is empty -> enumeration hasn't run yet
+    if (!dirEnum || Object.keys(dirEnum).length === 0) {
       return `<div style="text-align:center;padding:40px 20px">
         <div style="font-size:2rem;margin-bottom:12px"></div>
         <div style="font-weight:600;margin-bottom:6px">Directory enumeration not yet run</div>
-        <div style="color:var(--muted);font-size:.83rem;margin-bottom:16px">Probes ${domain} and its IPs for exposed paths using a 70-entry wordlist.</div>
-        <button class="btn btn-primary" onclick="triggerPortScan(${_dnsCurrent?.id})"> Run Dir Enum</button>
+        <div style="color:var(--muted);font-size:.83rem;margin-bottom:16px">Click the button below to probe ${domain} and its IPs for exposed paths using a 70-entry wordlist.</div>
+        <button class="btn btn-primary" onclick="triggerPortScan(${_dnsCurrent?.id}, 'dirs')"> Run Dir Enum</button>
       </div>`;
     }
-    let h = '';
-    for (const [target, paths] of Object.entries(dirEnum)) {
-      if (!paths.length) continue;
-      const interesting = paths.filter(p=>[200,201,301,302,401,403,500].includes(p.status_code));
-      const rows = interesting.map(p => {
-        const sc = p.status_code;
-        const cls = sc===200?'status-200':sc>=300&&sc<400?`status-${sc}`:sc===401||sc===403?`status-${sc}`:'status-500';
-        return `<tr>
-          <td><span class="${cls}">${sc}</span></td>
-          <td style="font-family:var(--mono);font-size:.78rem">${esc(p.path)}</td>
-          <td style="font-size:.74rem;color:var(--muted)">${p.content_length ? p.content_length+' bytes' : '-'}</td>
-          <td style="font-size:.74rem;color:var(--accent);font-family:var(--mono)">${p.redirect_to?esc(p.redirect_to):'-'}</td>
-        </tr>`;
-      }).join('');
-      h += infraSec(` ${esc(target)} - ${interesting.length} paths found`,
-        `<table class="dir-table"><thead><tr><th>Status</th><th>Path</th><th>Size</th><th>Redirect</th></tr></thead><tbody>${rows}</tbody></table>`);
-    }
-    return h;
-  }
 
-  //  Email Security View 
+    // No interesting paths found -> show "No directories found"
+    if (interesting.length === 0) {
+      return `<div style="text-align:center;padding:40px 20px">
+        <div style="font-size:2rem;margin-bottom:12px"></div>
+        <div style="font-weight:600;margin-bottom:6px;color:var(--green)">No directories found</div>
+        <div style="color:var(--muted);font-size:.83rem;margin-bottom:16px">No exposed paths (200/201/301/302/401/403/500) found on ${esc(domain)} or its IPs.</div>
+      </div>`;
+    }
+    const target = dirEnum && dirEnum.target ? dirEnum.target : domain;
+    const rows = interesting.map(p => {
+      const sc = p.status_code;
+      const cls = sc===200?'status-200':sc>=300&&sc<400?`status-${sc}`:sc===401||sc===403?`status-${sc}`:'status-500';
+      return `<tr>
+        <td><span class="${cls}">${sc}</span></td>
+        <td style="font-family:var(--mono);font-size:.78rem">${esc(p.path)}</td>
+        <td style="font-size:.74rem;color:var(--muted)">-</td>
+        <td style="font-size:.74rem;color:var(--accent);font-family:var(--mono)">-</td>
+      </tr>`;
+    }).join('');
+    return infraSec(` ${esc(target)} - ${interesting.length} paths found`,
+      `<table class="dir-table"><thead><tr><th>Status</th><th>Path</th><th>Size</th><th>Redirect</th></tr></thead><tbody>${rows}</tbody></table>`);
+  }
   function buildEmailPanel(email, dns) {
     const issues = email.issues || [];
     let score = 100;
@@ -4776,13 +5130,19 @@ function switchTab(name, evt) {
   }
 
   //  Port scan trigger 
-  async function triggerPortScan(invId) {
+  async function triggerPortScan(invId, scanType = 'both') {
     if (!invId) return;
     const btn = document.getElementById('portScanBtn');
     if (btn) { btn.disabled = true; btn.textContent = ' Scanning...'; }
-    toast('Port scan & directory enumeration started - this may take 30-60 seconds');
+    const doPorts = scanType === 'ports' || scanType === 'both';
+    const doDirs = scanType === 'dirs' || scanType === 'both';
+    toast(scanType === 'both' ? 'Port scan & directory enumeration started - this may take 30-60 seconds' : (scanType === 'ports' ? 'Port scan started - this may take 30-60 seconds' : 'Directory enumeration started - this may take 30-60 seconds'));
     try {
-      const res = await fetch(`/api/dns/investigations/${invId}/scan`, {method:'POST'});
+      const res = await fetch(`/api/dns/investigations/${invId}/scan`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({scan_ports: doPorts, scan_dirs: doDirs})
+      });
       const d = await res.json();
       if (!d.ok) { toast(d.error||'Error', 'error'); if(btn){btn.disabled=false;btn.textContent=' Scan Ports & Dirs';} return; }
       // Poll for results
@@ -6196,6 +6556,25 @@ function switchTab(name, evt) {
   </div>
 </div>
 
+<!--  Prediction Modal  -->
+<div class="intel-modal-overlay" id="predictionOverlay" onclick="closePredictionModal(event)">
+  <div class="intel-modal" id="predictionModal" style="max-width:820px">
+    <div class="intel-modal-header">
+      <button class="intel-modal-close" onclick="closePredictionModalDirect()"></button>
+      <div class="intel-modal-title" id="predictionTitle"></div>
+    </div>
+    <div class="intel-modal-body">
+      <div id="predictionSummary"></div>
+      <div class="prediction-chart-container" id="predictionChart">
+        <canvas id="predictionCanvas"></canvas>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+      <button class="intel-modal-close" onclick="closePredictionModalDirect()" style="position:static;color:var(--text);">Close</button>
+    </div>
+  </div>
+</div>
+
 <!--  Ransomware Victim Detail Modal  -->
 <div class="intel-modal-overlay" id="victimDetailOverlay" onclick="closeVictimModal(event)">
   <div class="intel-modal" id="victimDetailModal" style="max-width:640px">
@@ -6228,6 +6607,7 @@ function switchTab(name, evt) {
     </div>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 (function () {
   console.log('[fix] tab loader active');
@@ -6242,6 +6622,7 @@ function switchTab(name, evt) {
     'users':          'loadUsers',
     'projects':       'loadProjects',
     'paste-monitor':  'loadPasteHits',
+    'breach-directory': 'loadBreachDirectory',
     'reports':        'loadReportPreview',
     'settings':       'loadSettings',
     'channel-monitor':'cmInit',
@@ -6253,14 +6634,15 @@ function switchTab(name, evt) {
     'ip-lookup':'panel-iplookup', 'paste-monitor':'panel-paste',
     'quick-scan':'panel-dashboard', 'web-check':'panel-dashboard',
     'crawls':'panel-dashboard', 'osint-toolkit':'panel-osint',
-    'channel-monitor':'panel-channelmonitor', 'dashboard':'panel-home'
+    'channel-monitor':'panel-channelmonitor', 'dashboard':'panel-home',
+    'breach-directory':'panel-breach-directory'
   };
 
   window.switchTab = function (name, evt) {
     console.log('[switchTab] called with:', name);
     if (evt && evt.preventDefault) evt.preventDefault();
     document.querySelectorAll('.nav-item, .nav-dropdown-menu a').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-panel, [id^="panel-"], [id^="tab-"]').forEach(el => el.classList.remove('active'));
 
     const clicked = document.querySelector(`[data-tab="${name}"]`);
     if (clicked) clicked.classList.add('active');
@@ -6269,6 +6651,14 @@ function switchTab(name, evt) {
     let panel = document.getElementById(panelId) || document.getElementById('panel-' + name.replace(/-/g, ''));
     if (!panel) { console.error('[fix] no panel for', name); return; }
     panel.classList.add('active');
+
+    // ── Hard-fix: confine dashboard modules (Press, System Status, Predictive Threat) to Home tab ──
+    const dashboardModules = document.getElementById('hdDashboardModules');
+    const isHome = (name === 'dashboard' || name === 'home' || panelId === 'panel-home');
+    if (dashboardModules) {
+      dashboardModules.style.display = isHome ? 'block' : 'none';
+      dashboardModules.style.visibility = isHome ? 'visible' : 'hidden';
+    }
 
     const fn = LOADERS[name];
     if (fn && typeof window[fn] === 'function') {

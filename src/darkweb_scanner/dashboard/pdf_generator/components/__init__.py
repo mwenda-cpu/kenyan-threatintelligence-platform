@@ -234,10 +234,17 @@ def styled_table(headers: list, rows: list, col_widths: list,
                                       fontSize=font_size, leading=11,
                                       textColor=TEXT_PRIMARY)) for h in headers]]
     for r in rows:
-        data.append([Paragraph(f"<font color='#F0F4FF'>{c}</font>",
-                               ParagraphStyle("td", fontName="Helvetica",
-                                              fontSize=font_size, leading=11,
-                                              textColor=TEXT_PRIMARY)) for c in r])
+        row_data = []
+        for c in r:
+            if isinstance(c, Paragraph):
+                # Cell is already a Paragraph — use it directly (avoids str() gibberish).
+                row_data.append(c)
+            else:
+                row_data.append(Paragraph(f"<font color='#F0F4FF'>{c}</font>",
+                                          ParagraphStyle("td", fontName="Helvetica",
+                                                         fontSize=font_size, leading=11,
+                                                         textColor=TEXT_PRIMARY)))
+        data.append(row_data)
 
     tbl = Table(data, colWidths=col_widths, repeatRows=1)
     style = [

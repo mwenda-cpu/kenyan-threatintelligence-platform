@@ -304,6 +304,10 @@ class PasteHit(Base):
     matched_pattern = Column(String(100), nullable=False)  # pattern name e.g. ph_mobile
     matched_value = Column(String(500), nullable=True)     # the actual matched string
     context = Column(Text, nullable=True)
+    victim = Column(String(255), nullable=True)
+    group_name = Column(String(100), nullable=True)
+    sector = Column(String(100), nullable=True)
+    ransom_amount = Column(String(100), nullable=True)
     found_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     __table_args__ = (
@@ -327,6 +331,37 @@ class CustomIntel(Base):
     __table_args__ = (
         Index("ix_custom_intel_type", "intel_type"),
         Index("ix_custom_intel_slug", "slug"),
+    )
+
+
+# ── Threat IOC Model ────────────────────────────────────────────────────────────
+
+class ThreatIOC(Base):
+    __tablename__ = "threat_iocs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    indicator = Column(String(500), nullable=False, index=True)
+    type = Column(String(20), nullable=False, index=True)
+    threat_type = Column(String(100), nullable=True, index=True)
+    source = Column(String(100), nullable=True, index=True)
+    date_added = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+
+
+# ── Contextual Intel Model ──────────────────────────────────────────────────────
+
+class ContextualIntel(Base):
+    __tablename__ = "contextual_intel"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(100), nullable=True)
+    title = Column(String(500), nullable=True)
+    summary = Column(Text, nullable=True)
+    url = Column(Text, nullable=True)
+    extracted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    __table_args__ = (
+        Index("ix_contextual_intel_source", "source"),
+        Index("ix_contextual_intel_extracted", "extracted_at"),
     )
 
 
@@ -390,8 +425,49 @@ class Storage:
         self._create_tables()
 
     def _create_tables(self):
-        Base.metadata.create_all(self.engine, checkfirst=True)
+        try:
+            Base.metadata.create_all(self.engine, checkfirst=True)
+        except Exception as e:
+            logger.warning("create_all partial failure: %s", e)
+        self._migrate_missing_columns()
         logger.info("Database tables ready")
+
+    # Columns added to existing models after the first release. create_all()
+    # only creates missing *tables*, so pre-existing tables need an explicit
+    # ALTER TABLE ADD COLUMN. Kept idempotent — safe to run on every boot.
+    _PASTE_HIT_COLUMN_MIGRATIONS = (
+        ("paste_hits", "victim", "VARCHAR(255)"),
+        ("paste_hits", "group_name", "VARCHAR(100)"),
+        ("paste_hits", "sector", "VARCHAR(100)"),
+        ("paste_hits", "ransom_amount", "VARCHAR(100)"),
+    )
+
+    def _migrate_missing_columns(self):
+        """Add columns that were introduced after the table was first created."""
+        from sqlalchemy import inspect, text
+
+        try:
+            inspector = inspect(self.engine)
+            existing_tables = set(inspector.get_table_names())
+        except Exception as exc:
+            logger.warning("Column migration skipped (inspect failed): %s", exc)
+            return
+
+        for table, column, ddl_type in self._PASTE_HIT_COLUMN_MIGRATIONS:
+            if table not in existing_tables:
+                continue
+            try:
+                cols = {c["name"] for c in inspector.get_columns(table)}
+            except Exception:
+                continue
+            if column in cols:
+                continue
+            try:
+                with self.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {ddl_type}'))
+                logger.info("Migrated: added %s.%s %s", table, column, ddl_type)
+            except Exception as exc:
+                logger.warning("Could not add column %s.%s: %s", table, column, exc)
 
     @contextmanager
     def get_session(self):
@@ -1442,11 +1518,16 @@ class Storage:
 
     def save_paste_hit(self, paste_id: str, url: str, source: str,
                        matched_pattern: str, matched_value: str = None,
-                       context: str = None) -> int:
+                       context: str = None, victim: str = None,
+                       group_name: str = None, sector: str = None,
+                       ransom_amount: str = None, found_at: datetime = None) -> int:
         with self.get_session() as session:
             h = PasteHit(paste_id=paste_id, url=url, source=source,
                          matched_pattern=matched_pattern,
-                         matched_value=matched_value, context=context)
+                         matched_value=matched_value, context=context,
+                         victim=victim, group_name=group_name,
+                         sector=sector, ransom_amount=ransom_amount,
+                         found_at=found_at or datetime.now(timezone.utc).replace(tzinfo=None))
             session.add(h)
             session.commit()
             session.refresh(h)
@@ -1465,8 +1546,18 @@ class Storage:
                 "id": h.id, "paste_id": h.paste_id, "url": h.url,
                 "source": h.source, "matched_pattern": h.matched_pattern,
                 "matched_value": h.matched_value, "context": h.context,
+                "victim": h.victim, "group_name": h.group_name,
+                "sector": h.sector, "ransom_amount": h.ransom_amount,
                 "found_at": h.found_at.isoformat() if h.found_at else None,
             } for h in hits]
+
+    def purge_paste_hits(self) -> int:
+        with self.get_session() as session:
+            count = session.query(func.count(PasteHit.id)).scalar() or 0
+            session.query(PasteHit).delete()
+            session.commit()
+        logger.info("Purged %d paste_hits records", count)
+        return count
 
     def get_paste_stats(self) -> dict:
         with self.get_session() as session:
@@ -1658,3 +1749,71 @@ class Storage:
                 .first()
             )
             return record is not None
+    # Threat IOC methods
+    def save_threat_ioc(self, indicator, ioc_type, threat_type=None, source=None):
+        with self.get_session() as session:
+            existing = session.query(ThreatIOC).filter(
+                ThreatIOC.indicator == indicator,
+                ThreatIOC.type == ioc_type,
+            ).first()
+            if existing:
+                return existing.id
+            record = ThreatIOC(indicator=indicator, type=ioc_type, threat_type=threat_type, source=source)
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return record.id
+
+    def get_threat_iocs(self, limit=200, ioc_type=None, source=None):
+        with self.get_session() as session:
+            q = session.query(ThreatIOC)
+            if ioc_type:
+                q = q.filter(ThreatIOC.type == ioc_type)
+            if source:
+                q = q.filter(ThreatIOC.source == source)
+            rows = q.order_by(ThreatIOC.date_added.desc()).limit(limit).all()
+            return [{"id": r.id, "indicator": r.indicator, "type": r.type, "threat_type": r.threat_type, "source": r.source, "date_added": r.date_added.isoformat() if r.date_added else None} for r in rows]
+
+    def purge_threat_iocs(self):
+        with self.get_session() as session:
+            count = session.query(func.count(ThreatIOC.id)).scalar() or 0
+            session.query(ThreatIOC).delete()
+            session.commit()
+        return count
+
+    # Contextual Intel methods
+    def save_contextual_intel(self, source, title=None, summary=None, url=None):
+        with self.get_session() as session:
+            record = ContextualIntel(source=source, title=title, summary=summary, url=url)
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return record.id
+
+    def get_contextual_intel(self, limit=100, source=None):
+        with self.get_session() as session:
+            q = session.query(ContextualIntel)
+            if source:
+                q = q.filter(ContextualIntel.source == source)
+            rows = q.order_by(ContextualIntel.extracted_at.desc()).limit(limit).all()
+            return [{"id": r.id, "source": r.source, "title": r.title, "summary": r.summary, "url": r.url, "extracted_at": r.extracted_at.isoformat() if r.extracted_at else None} for r in rows]
+
+
+
+
+
+# --- Singleton accessor ---
+_storage_instance = None
+_storage_lock = None
+
+
+def get_storage() -> "Storage":
+    global _storage_instance, _storage_lock
+    if _storage_instance is None:
+        import threading
+        if _storage_lock is None:
+            _storage_lock = threading.Lock()
+        with _storage_lock:
+            if _storage_instance is None:
+                _storage_instance = Storage()
+    return _storage_instance

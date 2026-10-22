@@ -238,6 +238,8 @@ class Crawler:
                                 continue
                             self._visited.add(link)
                             queue.append((link, depth + 1, origin_domain, is_pag))
+                            if is_pag:
+                                logger.info(f"Pagination discovered: {link} (page {self._pagination_pages_crawled + 1})")
 
         logger.info(f"Crawl complete. Total pages crawled: {self._pages_crawled} (pagination: {self._pagination_pages_crawled})")
 

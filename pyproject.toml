@@ -30,6 +30,7 @@ dependencies = [
     "pyyaml>=6.0",
     "click>=8.1",
     "python-dotenv>=1.0",
+    "PySocks>=1.7",
 ]
 
 [project.optional-dependencies]
@@ -40,7 +41,8 @@ dashboard = [
     "pyotp>=2.9",
     "qrcode>=7.4",
     "pillow>=10.0",
-    "requests>=2.31",
+    "requests[socks]>=2.31",
+    "pdfplumber>=0.10",
     "telethon>=1.36",
     "reportlab>=4.0",
     "deep-translator>=1.11",

@@ -1,0 +1,2 @@
+# Run historical API fetch every 24 hours (at 02:00 UTC)
+0 2 * * * root PYTHONPATH=/app/src python /app/scripts/fetch_historical_api.py >> /proc/1/fd/1 2>&1

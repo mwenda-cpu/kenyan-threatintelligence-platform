@@ -31,17 +31,17 @@ from .sections import cover, toc, executive_summary, threat_landscape
 from .sections import human_risk, campaigns, strategic_guidance, appendix
 
 
-def _footer(canvas, doc):
-    """Draw muted footer + cover-page dark navy background on page 1."""
+def _page(canvas, doc):
+    """Draw dark navy background first, then footer (runs once per page)."""
     canvas.saveState()
+    # ── Background (drawn first, underneath everything) ──────────────────
+    canvas.setFillColor(colors.HexColor(BG_PRIMARY))
+    canvas.rect(0, 0, PAGE_W, PAGE_H, stroke=0, fill=1)
+
+    # Cover-specific accent elements
     if doc.page == 1:
-        # Full-bleed deep navy background for cover
-        canvas.setFillColor(colors.HexColor(BG_PRIMARY))
-        canvas.rect(0, 0, PAGE_W, PAGE_H, stroke=0, fill=1)
-        # Thin accent band near top
         canvas.setFillColor(colors.HexColor(ACCENT_BLUE))
         canvas.rect(0, PAGE_H - 6, PAGE_W, 6, stroke=0, fill=1)
-        # Kenyan flag stripe motif at bottom-left
         stripe_h = 3 * mm
         canvas.setFillColor(colors.HexColor(KE_BLACK))
         canvas.rect(2 * mm, PAGE_H - 24 * mm, 20 * mm, stripe_h, stroke=0, fill=1)
@@ -55,8 +55,7 @@ def _footer(canvas, doc):
     canvas.setFont("Helvetica", 7.5)
     canvas.drawString(MARGIN, 12 * mm, FOOTER_LEFT)
     canvas.drawRightString(PAGE_W - MARGIN, 12 * mm, FOOTER_RIGHT)
-    canvas.drawCentredString(PAGE_W / 2, 8 * mm,
-                             f"<font color='#7B8DB5'>Page {doc.page}</font>")
+    canvas.drawCentredString(PAGE_W / 2, 8 * mm, f"Page {doc.page}")
     canvas.setStrokeColor(colors.HexColor("#1F2A44"))
     canvas.setLineWidth(0.5)
     canvas.line(MARGIN, 15 * mm, PAGE_W - MARGIN, 15 * mm)
@@ -88,8 +87,8 @@ def build_report(data: Optional[dict] = None, logo_path: Optional[str] = None) -
     # Single portrait frame
     frame = Frame(MARGIN, MARGIN, CONTENT_W, CONTENT_H, id="main")
     doc.addPageTemplates([
-        PageTemplate(id="cover", frames=[frame], onPage=_footer),
-        PageTemplate(id="body", frames=[frame], onPage=_footer),
+        PageTemplate(id="cover", frames=[frame], onPage=_page),
+        PageTemplate(id="body", frames=[frame], onPage=_page),
     ])
 
     story = []
