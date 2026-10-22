@@ -9,6 +9,7 @@ appear in the dashboard UI.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
@@ -46,6 +47,17 @@ KE_KEYWORD_RE = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in KE_KEYWORDS) + r")\b",
     re.IGNORECASE,
 )
+
+
+def _make_paste_id(prefix: str, raw_id: str) -> str:
+    """Deterministic paste_id — same input always yields the same output.
+
+    Uses SHA-256 instead of Python's built-in ``hash()``, which is randomized
+    per process (PYTHONHASHSEED) and would produce a different paste_id for
+    the same victim on every scraper run, causing duplicate rows.
+    """
+    digest = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()
+    return f"{prefix}_{digest}"[:200]
 
 
 def fetch_recent_victims() -> list[dict]:
@@ -154,7 +166,7 @@ def scrape_ransomware(storage: Storage) -> dict:
 
         # Build a deterministic, unique paste_id so re-runs don't duplicate.
         raw_id = f"{group_name}|{post_title}|{discovered}"
-        paste_id = f"ransomware_{abs(hash(raw_id))}"[:200]
+        paste_id = _make_paste_id("ransomware", raw_id)
 
         # URL — ransomware.live may provide post_url; fall back to their site
         url = (
@@ -163,8 +175,9 @@ def scrape_ransomware(storage: Storage) -> dict:
             or f"https://www.ransomware.live/victim/{post_title.replace(' ', '-')}"
         )
 
-        # Skip if already ingested
-        if storage.is_paste_seen("ransomware", paste_id):
+        # Skip if already ingested (check both the seen-pastes bookkeeping
+        # table and the paste_hits table itself, in case they are out of sync).
+        if storage.is_paste_seen("ransomware", paste_id) or storage.paste_hit_exists(paste_id):
             skipped_seen += 1
             continue
 
@@ -373,10 +386,10 @@ def backfill_historical_kenyan_victims(storage: Storage) -> dict:
 
         # Build deterministic paste_id
         raw_id = f"historical|{group_name}|{victim_name}|{discovered}"
-        paste_id = f"ransomware_hist_{abs(hash(raw_id))}"[:200]
+        paste_id = _make_paste_id("ransomware_hist", raw_id)
 
         # Skip if already ingested
-        if storage.is_paste_seen("ransomware_hist", paste_id):
+        if storage.is_paste_seen("ransomware_hist", paste_id) or storage.paste_hit_exists(paste_id):
             skipped_seen += 1
             continue
 

@@ -308,6 +308,7 @@ class PasteHit(Base):
     group_name = Column(String(100), nullable=True)
     sector = Column(String(100), nullable=True)
     ransom_amount = Column(String(100), nullable=True)
+    status_badges = Column(String(200), nullable=True)
     found_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     __table_args__ = (
@@ -1553,6 +1554,18 @@ class Storage:
                 session.add(SeenPaste(source=source, paste_id=paste_id,
                                       url=url, had_hits=had_hits))
                 session.commit()
+
+    def paste_hit_exists(self, paste_id: str) -> bool:
+        """Return True if a row with ``paste_id`` already exists in ``paste_hits``.
+
+        Belt-and-suspenders check used by scrapers before inserting, in case
+        the ``seen_pastes`` bookkeeping table and ``paste_hits`` are out of
+        sync.
+        """
+        with self.get_session() as session:
+            return session.query(PasteHit).filter(
+                PasteHit.paste_id == paste_id,
+            ).first() is not None
 
     # ── Onion seeds table ──────────────────────────────────────────────────
 

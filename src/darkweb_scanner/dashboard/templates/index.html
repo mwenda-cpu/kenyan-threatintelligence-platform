@@ -3776,8 +3776,12 @@
     try {
       const raw = await (await fetch('/api/breaches/directory')).json();
       console.log('[loadBreachDirectory] raw API response:', raw);
-      breachData = Array.isArray(raw) ? raw : (raw && (raw.breaches || raw.data)) || [];
-      renderBreachDirectory(raw && !Array.isArray(raw) ? raw : { breaches: breachData });
+      const breaches = Array.isArray(raw.breaches) ? raw.breaches
+                 : Array.isArray(raw.data) ? raw.data
+                 : Array.isArray(raw) ? raw
+                 : [];
+      breachData = breaches;
+      renderBreachDirectory({ breaches, total_breaches: raw?.total_breaches ?? breaches.length, total_records_exposed: raw?.total_records_exposed ?? 0, years_tracked: raw?.years_tracked ?? 0 });
     } catch(e) {
       console.error('[loadBreachDirectory] error:', e);
       grid.innerHTML = '<div class="empty"><div class="icon"></div><p>Failed to load breach directory.</p></div>';
@@ -3831,7 +3835,8 @@
 
       const leakUrl = b.leak_url || '';
       const dateStr = b.date ? String(b.date).slice(0, 10) : '—';
-      const records = Number(b.records_exposed || 0).toLocaleString();
+      const records = Number(b.records_exposed || 0);
+      const recordsLabel = records > 0 ? records.toLocaleString() + ' records' : 'Undisclosed records';
 
       return `
       <div class="intel-card" style="border-left:3px solid var(--red)">
@@ -3841,7 +3846,7 @@
         <div style="display:flex;align-items:center;gap:8px;margin:10px 0;flex-wrap:wrap">
           <a href="${esc(leakUrl)}" target="_blank" rel="noopener noreferrer"
              class="btn" style="background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3);font-size:.76rem;padding:5px 12px;text-decoration:none">🔗 View Dark Web Leak</a>
-          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${records} records</span>
+          <span style="font-size:.72rem;color:var(--muted);margin-left:auto">${recordsLabel}</span>
         </div>
         <div class="intel-hits" style="margin-top:0;padding-top:10px">
           <span style="font-size:.74rem;color:var(--muted)">${esc(b.sector || 'Unknown')}</span>
