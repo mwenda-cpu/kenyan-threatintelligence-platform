@@ -15,6 +15,7 @@ import requests
 from flask import Blueprint, Response, jsonify, render_template, request, session
 
 from ..auth import hash_password, require_login, validate_password_strength
+from ..crawler import CrawlConfig, run_onion_crawl_cycle
 from ..storage import HistoricalAttack
 from .forecaster import forecast_hits
 from .http_client import SafeFetchError, check_host_ssrf, safe_fetch
@@ -615,17 +616,13 @@ _active_scan_thread = None  # track running scan thread
 @dashboard_bp.route("/api/crawl/start", methods=["POST"])
 @require_login
 def api_crawl_start():
+    print("[crawl] POST /api/crawl/start received", flush=True)
     try:
         # Clear any stale stop flag before starting
         STOP_FLAG.unlink(missing_ok=True)
         import asyncio
         import threading
         import traceback
-        from pathlib import Path as _Path
-
-        from ..alerting import Alerter
-        from ..crawler import CrawlConfig
-        from ..main import run_scan
 
         global _active_scan_thread
 
@@ -635,50 +632,39 @@ def api_crawl_start():
         if _active_scan_thread and _active_scan_thread.is_alive():
             return jsonify({"error": "A crawl is already running"}), 409
 
-        # Resolve the seeds file (keywords come from the database)
-        seeds_path = DATA_DIR / "seeds.txt"
-        if not seeds_path.exists():
-            seeds_path = _Path("config/seeds.txt")
-
-        if not seeds_path.exists():
-            return jsonify({"error": "No seeds file found. Add seeds in the Seeds tab first."}), 400
-
-        seed_urls = [
-            line.strip()
-            for line in seeds_path.read_text().splitlines()
-            if line.strip() and not line.strip().startswith("#")
-        ]
+        # Seeds come from the database (seeded at startup from config/sources.json),
+        # never from a hardcoded list.
+        storage = get_storage()
+        seed_urls = storage.get_active_seeds()
         if not seed_urls:
-            return jsonify({"error": "Seeds file is empty. Add at least one .onion URL."}), 400
+            return jsonify(
+                {
+                    "error": "No active onion seeds in the database. "
+                    "Seeds are seeded at startup from config/sources.json."
+                }
+            ), 400
 
         # Clear any stale stop flag
         if STOP_FLAG.exists():
             STOP_FLAG.unlink()
 
-        storage = get_storage()
-
         def run():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                # Keywords live in the database (YAML is only the seed).
-                from ..keywords_db import keyword_config
-                keyword_config = keyword_config(storage, KEYWORDS_DEFAULT)
                 crawl_config = CrawlConfig()
-                alerter = Alerter()
-                loop.run_until_complete(
-                    run_scan(
-                        seeds=seed_urls,
-                        keyword_config=keyword_config,
-                        crawl_config=crawl_config,
-                        storage=storage,
-                        alerter=alerter,
-                        check_tor=True,
-                        stop_flag=STOP_FLAG,
+
+                async def _main():
+                    # Schedule the crawl coroutine explicitly on the loop.
+                    task = asyncio.create_task(
+                        run_onion_crawl_cycle(storage=storage, config=crawl_config)
                     )
-                )
+                    return await task
+
+                loop.run_until_complete(_main())
             except Exception as e:
                 print(f"Scan thread error: {e}", flush=True)
+                traceback.print_exc()
             finally:
                 loop.close()
                 if STOP_FLAG.exists():
@@ -686,6 +672,7 @@ def api_crawl_start():
 
         _active_scan_thread = threading.Thread(target=run, daemon=True, name="crawl_thread")
         _active_scan_thread.start()
+        print(f"[crawl] thread started: {_active_scan_thread.name}", flush=True)
 
         return jsonify({"ok": True, "message": "Crawl started."})
     except Exception as e:
@@ -1915,11 +1902,55 @@ def api_threat_actors():
     static_slugs = {a["slug"] for a in THREAT_ACTORS}
     all_actors = list(THREAT_ACTORS) + [a for a in custom if a["slug"] not in static_slugs]
 
-    # Bulk-fetch hits and last-seen dates for every keyword in one query each
-    # instead of issuing one query per keyword per actor.
+    # Bulk-fetch recent hits / last-seen dates for every keyword (used for
+    # recent_hits and last_seen only). The authoritative per-actor hit count is
+    # derived from paste_hits.group_name / context / matched_value below.
     all_keywords = list({kw for a in all_actors for kw in a.get("keywords", [])})
     hits_by_kw = storage.get_hits_by_keywords(all_keywords, limit_per_keyword=5)
     last_date_by_kw = storage.get_last_hit_dates_bulk(all_keywords)
+
+    # One query for all paste hits, then aggregate in Python (no N+1 per-actor
+    # queries, no truncated lookback). Errors are logged — never silently
+    # swallowed into zeroes.
+    try:
+        paste_hits = storage.get_paste_hits()
+    except Exception as exc:  # log so it surfaces in docker compose logs
+        print(f"[threat-actors] paste_hits query error: {exc}")
+        paste_hits = []
+
+    def _actor_match_terms(actor: dict) -> set[str]:
+        terms: set[str] = set()
+        name = (actor.get("name") or "").strip()
+        if name:
+            terms.add(name.lower())
+        for al in (actor.get("aliases") or []):
+            al = (al or "").strip()
+            if al:
+                terms.add(al.lower())
+        for kw in (actor.get("keywords") or []):
+            kw = (kw or "").strip()
+            if kw:
+                terms.add(kw.lower())
+        terms.discard("")
+        return terms
+
+    actor_terms = [(a, _actor_match_terms(a)) for a in all_actors]
+    hit_count_by_slug = {a["slug"]: 0 for a in all_actors}
+    for ph in paste_hits:
+        gn = (ph.get("group_name") or "").strip().lower()
+        ctx = (ph.get("context") or "").lower()
+        mv = (ph.get("matched_value") or "").lower()
+        for actor, terms in actor_terms:
+            # COUNT(DISTINCT paste_hits.id) per actor: a paste hit counts at most
+            # once per actor. Match group_name exactly, or name/alias/keyword as
+            # a substring of context or matched_value (case-insensitive).
+            if gn and gn in terms:
+                hit_count_by_slug[actor["slug"]] += 1
+                continue
+            for term in terms:
+                if term and (term in ctx or term in mv):
+                    hit_count_by_slug[actor["slug"]] += 1
+                    break
 
     enriched = []
     for actor in all_actors:
@@ -1936,7 +1967,7 @@ def api_threat_actors():
         dates = [last_date_by_kw[kw] for kw in keywords if kw in last_date_by_kw]
         enriched.append({
             **actor,
-            "hit_count": sum(len(hits_by_kw.get(kw, [])) for kw in keywords),
+            "hit_count": hit_count_by_slug[actor["slug"]],
             "recent_hits": recent_hits[:10],
             "last_seen": max(dates) if dates else None,
             "is_custom": actor.get("slug") not in static_slugs,
@@ -4800,7 +4831,7 @@ def api_breaches_directory():
                     "threat_actor": h.group_name or "Unknown",
                     "leak_url": h.url or "",
                     "date": h.found_at.isoformat() if h.found_at else None,
-                    "status_badges": h.matched_pattern or "RANSOMWARE",
+                    "status_badges": h.status_badges or "RANSOMWARE",
                     "records_exposed": records_exposed,
                 })
 

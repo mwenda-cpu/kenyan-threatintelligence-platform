@@ -1,6 +1,6 @@
 # threatintel-platform
 
-A self-hosted, open-source threat intelligence platform built for the Philippine and Southeast Asian security landscape. Crawls .onion networks, monitors Telegram channels, tracks ransomware groups, profiles threat actors, and delivers a daily intelligence digest — all from a single Docker Compose deployment.
+A self-hosted, open-source threat intelligence platform built for the Kenyan Government and Financial Sector. Crawls .onion networks, monitors Telegram channels, tracks ransomware groups, profiles threat actors, and delivers a daily intelligence digest — all from a single Docker Compose deployment.
 
 **Version: 1.1.0 · License: AGPL-3.0**
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import os
-import random
 import re
 from datetime import datetime, timezone
 from typing import Optional
@@ -174,7 +173,12 @@ def scrape_ransomware(storage: Storage) -> dict:
             # backfill so live + historical entries render identically.
             title = f"{post_title} listed by {group_name}"
             status_badges = "RANSOMWARE, CREDIBLE, KENYA"
-            records_exposed = random.randint(1000, 1_000_000)
+            # records_exposed comes only from the API — never fabricated.
+            records_exposed = (
+                victim.get("ransom_amount")
+                or victim.get("ransom")
+                or victim.get("price")
+            )
             context = (
                 f"{description[:2000]}\n\n"
                 f"Group: {group_name}\n"
@@ -182,20 +186,21 @@ def scrape_ransomware(storage: Storage) -> dict:
                 f"Discovered: {discovered}\n"
                 f"Ransom: {ransom_amount or 'N/A'}\n"
                 f"Status: {status_badges}\n"
-                f"Records exposed: {records_exposed:,}\n"
+                f"Records exposed: {records_exposed if records_exposed is not None else 'Undisclosed'}\n"
                 f"Source: ransomware.live recent feed"
             )
             storage.save_paste_hit(
                 paste_id=paste_id,
                 url=url,
                 source=f"Ransomware:{group_name}",
-                matched_pattern=status_badges,
+                matched_pattern=group_name,
+                status_badges=status_badges,
                 matched_value=title[:500],
                 context=context,
                 victim=title[:255],
                 group_name=group_name,
                 sector=sector,
-                ransom_amount=str(records_exposed),
+                ransom_amount=str(records_exposed) if records_exposed is not None else None,
             )
             saved_count += 1
             logger.info(
@@ -375,8 +380,12 @@ def backfill_historical_kenyan_victims(storage: Storage) -> dict:
             skipped_seen += 1
             continue
 
-        # Random records_exposed between 1000 and 1,000,000
-        records_exposed = random.randint(1000, 1_000_000)
+        # records_exposed comes only from the API — never fabricated.
+        records_exposed = (
+            victim.get("ransom_amount")
+            or victim.get("ransom")
+            or victim.get("price")
+        )
 
         title = f"{victim_name} listed by {group_name}"
         status_badges = "RANSOMWARE, CREDIBLE, KENYA"
@@ -386,7 +395,7 @@ def backfill_historical_kenyan_victims(storage: Storage) -> dict:
             f"Sector: {sector}\n"
             f"Discovered: {discovered}\n"
             f"Status: {status_badges}\n"
-            f"Records exposed: {records_exposed:,}\n"
+            f"Records exposed: {records_exposed if records_exposed is not None else 'Undisclosed'}\n"
             f"Source: ransomware.live historical backfill"
         )
 
@@ -395,13 +404,14 @@ def backfill_historical_kenyan_victims(storage: Storage) -> dict:
                 paste_id=paste_id,
                 url=leak_url,
                 source="ransomware.historical",
-                matched_pattern=status_badges,
+                matched_pattern=group_name,
+                status_badges=status_badges,
                 matched_value=title[:500],
                 context=context,
                 victim=title[:255],
                 group_name=group_name,
                 sector=sector,
-                ransom_amount=str(records_exposed),
+                ransom_amount=str(records_exposed) if records_exposed is not None else None,
                 found_at=_parse_discovered(discovered),
             )
             saved_count += 1

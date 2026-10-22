@@ -81,7 +81,7 @@ def build_report(data: Optional[dict] = None, logo_path: Optional[str] = None) -
         title="2026 Kenya Cyber Threat Intelligence Report",
         author="KE-CIRT / CC",
         subject="Kenya Cyber Threat Intelligence Briefing",
-        creator="KE-CIRT Threat Intel Platform",
+        creator="Threat Intel Platform",
     )
 
     # Single portrait frame

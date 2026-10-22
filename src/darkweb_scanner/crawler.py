@@ -18,9 +18,12 @@ from urllib.parse import urljoin, urlparse
 import aiohttp
 from bs4 import BeautifulSoup
 
-from .tor_client import TorClient
+from .storage import Storage
+from .tor_client import TorClient, create_tor_client
 
 logger = logging.getLogger(__name__)
+
+KEYWORDS_DEFAULT = pathlib.Path(__file__).resolve().parents[2] / "config" / "keywords.yaml"
 
 ONION_PATTERN = re.compile(r"https?://[a-z2-7]{16,56}\.onion", re.IGNORECASE)
 
@@ -247,3 +250,106 @@ class Crawler:
         self._visited.clear()
         self._domain_counts.clear()
         self._pages_crawled = 0
+
+
+async def _fetch_page(session: aiohttp.ClientSession, url: str) -> tuple[Optional[str], Optional[str]]:
+    """Fetch one page through the Tor-routed aiohttp session.
+
+    Returns ``(plain_text, error)`` — exactly one of the two is non-None.
+    """
+    try:
+        async with session.get(url, ssl=False, allow_redirects=True) as resp:
+            html = await resp.text(errors="replace")
+    except asyncio.TimeoutError:
+        return None, "Timeout"
+    except Exception as e:  # noqa: BLE001 - a fetch failure must not kill the cycle
+        return None, str(e)
+
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = soup.get_text(separator=" ", strip=True)
+    return text, None
+
+
+async def run_onion_crawl_cycle(
+    storage: Optional[Storage] = None,
+    tor: Optional[TorClient] = None,
+    config: Optional[CrawlConfig] = None,
+) -> dict[str, int]:
+    """Run one crawl cycle over every active onion seed.
+
+    * Reads seeds from the ``seeds`` table WHERE ``active = TRUE`` (never a
+      hardcoded list).
+    * Fetches each seed through Tor with aiohttp routed over the SOCKS5 proxy
+      (``socks5h://tor:9050`` equivalent via ``aiohttp_socks.ProxyConnector``
+      in ``TorClient``).
+    * Loads keywords from the ``keywords`` table, falling back to
+      ``config/keywords.yaml`` when the table is empty.
+    * Scans each page case-insensitively and inserts one ``paste_hits`` row per
+      matched keyword with ``source = 'onion_crawler'``.
+    * Deduplicates by ``(paste_id, matched_pattern)``.
+    """
+    from .keywords_db import keyword_config
+    from .scanner import Scanner
+
+    storage = storage or Storage()
+    config = config or CrawlConfig()
+
+    # ── Seeds from the database, active only ───────────────────────────────
+    seeds = storage.get_active_seeds()
+    if not seeds:
+        msg = "[crawler] no active onion seeds in the seeds table"
+        logger.warning(msg)
+        print(msg, flush=True)
+        return {"fetched": 0, "hits": 0}
+
+    # ── Keywords from the DB (YAML is the fallback seed) ───────────────────
+    kw_config = keyword_config(storage, KEYWORDS_DEFAULT)
+    scanner = Scanner(kw_config)
+
+    tor_client = tor or create_tor_client()
+    fetched = 0
+    hits = 0
+    session = await tor_client.get_session()
+    try:
+        for url in seeds:
+            fetched += 1
+            text, error = await _fetch_page(session, url)
+            matched = 0
+            if error or not text:
+                storage.increment_seed_attempt(url)
+                logger.warning(
+                    "Crawl failed for %s (error: %s); seed deactivated if attempt_count >= 3",
+                    url,
+                    error or "empty response",
+                )
+                print(
+                    f"[crawler] fetched {url} | keywords matched: 0 (error: {error or 'empty response'})",
+                    flush=True,
+                )
+                continue
+
+            hit_list = scanner.scan(url=url, text=text, depth=0)
+            seen_patterns = storage.get_paste_hit_patterns(url)
+            for hit in hit_list:
+                if hit.keyword in seen_patterns:
+                    continue
+                storage.save_paste_hit(
+                    paste_id=url,
+                    url=url,
+                    source="onion_crawler",
+                    matched_pattern=hit.keyword,
+                    matched_value=hit.keyword,
+                    context=hit.context,
+                )
+                seen_patterns.add(hit.keyword)
+                matched += 1
+
+            hits += matched
+            print(f"[crawler] fetched {url} | keywords matched: {matched}", flush=True)
+    finally:
+        await tor_client.close()
+
+    print(f"[crawler] cycle complete: fetched={fetched} hits={hits}", flush=True)
+    return {"fetched": fetched, "hits": hits}

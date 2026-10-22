@@ -102,12 +102,6 @@ RE_DATE_MY = re.compile(
     re.IGNORECASE,
 )
 
-CBK_MOCK = {
-    2016: {"mobile_banking": 8420, "card": 3910, "online": 1875, "cyber": 1240},
-    2020: {"mobile_banking": 9880, "card": 4320, "online": 2110, "cyber": 1620},
-    2024: {"mobile_banking": 15230, "card": 5230, "online": 3410, "cyber": 2890},
-}
-
 MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
     "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
@@ -335,14 +329,9 @@ def _parse_sidecar(kind: str, path: Path) -> dict | None:
             logger.warning("%s: sidecar has no period; skipping", path.name)
             return None
 
-        # CBK sidecars often carry all-zero stats from image-based PDFs.
-        # Fall back to mock data when stats are empty or all zeros.
         if not stats or all(v == 0 for v in stats.values()):
-            try:
-                year = int(period)
-                stats = CBK_MOCK.get(year, stats)
-            except (TypeError, ValueError):
-                pass
+            logger.warning("%s: CBK stats empty after parse — skipping record", path.name)
+            return None
 
         return {
             "period": period,
@@ -514,12 +503,9 @@ def _parse_cbk_pdf(path: Path) -> dict | None:
         if k in {"fraud", "cyber", "card", "online", "mobile_banking", "ransomware", "phishing"}:
             stats.setdefault(k, v)
 
-    # CBK PDFs are often image-based; fall back to mock data when parsing yields nothing
     if not stats or all(v == 0 for v in stats.values()):
-        year_match = RE_YEAR.search(path.name)
-        if year_match:
-            year = int(year_match.group(0))
-            stats = CBK_MOCK.get(year, stats)
+        logger.warning("%s: CBK stats empty after parse — skipping record", path.name)
+        return None
 
     return {
         "period": period,

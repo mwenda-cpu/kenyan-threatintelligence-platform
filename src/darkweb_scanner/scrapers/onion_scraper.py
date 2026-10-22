@@ -70,6 +70,13 @@ def _strip_html(html: str) -> str:
 def scrape_onion(storage: Storage, targets: list[str] = None) -> dict:
     """Scrape .onion sites via Tor and extract Kenyan threat indicators.
 
+    Loads active keywords from the keywords table, lowercases page text, and
+    for each keyword occurrence inserts a separate paste_hits row with
+    matched_pattern=<keyword>, matched_value=<context>, status_badges="KENYA".
+
+    Deduplicates by (paste_id, matched_pattern). Pages matching zero keywords
+    insert no rows.
+
     Returns a summary dict.
     """
     if targets is None:
@@ -78,6 +85,13 @@ def scrape_onion(storage: Storage, targets: list[str] = None) -> dict:
     total_scanned = 0
     total_hits = 0
     per_target: dict[str, dict] = {}
+
+    # Load active keywords from the keywords table
+    try:
+        keyword_list = storage.get_active_keywords()
+        keywords = {k["keyword"].lower(): k["keyword"] for k in keyword_list}
+    except Exception:
+        keywords = {}
 
     for url in targets:
         logger.info("Scraping onion target: %s", url)
@@ -88,64 +102,61 @@ def scrape_onion(storage: Storage, targets: list[str] = None) -> dict:
 
         text = _strip_html(html)
         total_scanned += 1
+        text_lower = text.lower()
 
-        # Run Kenyan PII extraction
-        pii_matches = extract_kenyan_pii(text)
+        # Find all keywords present in the page text
+        matched_keywords: dict[str, str] = {}
+        for kw_lower, kw_original in keywords.items():
+            if kw_lower in text_lower:
+                matched_keywords[kw_lower] = kw_original
 
-        # Run keyword extraction (Kenyan domains, ransomware groups)
-        from darkweb_scanner.scrapers.keyword_extractor import DOMAIN_WHITELIST, extract_kenyan_pii
-        # Also check for ransomware group mentions
-        ransomware_groups = {"lockbit", "cl0p", "akira", "alphv", "blackcat", "play", "medusa", "8base", "royal"}
-        found_groups = [g for g in ransomware_groups if g in text.lower()]
+        if not matched_keywords:
+            per_target[url] = {
+                "hits": 0,
+                "matched_keywords": [],
+                "text_length": len(text),
+            }
+            continue
 
         hits_found = 0
-        # Save PII hits
-        for pii in pii_matches:
-            try:
-                paste_id = f"tor_pii_{abs(hash(url + pii['value']))}"[:200]
-                if storage.is_paste_seen("DarkWeb_Tor", paste_id):
-                    continue
-                storage.save_paste_hit(
-                    paste_id=paste_id,
-                    url=url,
-                    source="DarkWeb_Tor",
-                    matched_pattern=f"Tor PII: {pii['label']}",
-                    matched_value=pii["value"],
-                    context=text[:500],
-                )
-                storage.mark_paste_seen("DarkWeb_Tor", paste_id, url, had_hits=True)
-                hits_found += 1
-                total_hits += 1
-            except Exception as exc:
-                logger.debug("Failed to save Tor PII hit: %s", exc)
+        # Insert a separate paste_hits row per matching keyword
+        for kw_lower, kw_original in matched_keywords.items():
+            idx = text_lower.find(kw_lower)
+            start = max(0, idx - 200)
+            end = min(len(text), idx + len(kw_lower) + 200)
+            context = text[start:end]
 
-        # Save ransomware group mentions
-        for group in found_groups:
+            paste_id = f"onion_kw_{abs(hash(url + kw_lower))}"
+
+            # Deduplicate by (source, paste_id, matched_pattern)
+            if storage.is_paste_seen("DarkWeb_Tor", paste_id):
+                continue
+
             try:
-                paste_id = f"tor_group_{abs(hash(url + group))}"[:200]
-                if storage.is_paste_seen("DarkWeb_Tor", paste_id):
-                    continue
                 storage.save_paste_hit(
                     paste_id=paste_id,
                     url=url,
                     source="DarkWeb_Tor",
-                    matched_pattern="Tor Ransomware Group",
-                    matched_value=group.title(),
-                    context=text[:500],
+                    matched_pattern=kw_original,
+                    matched_value=context.strip()[:500],
+                    context=context.strip()[:500],
+                    status_badges="KENYA",
                 )
                 storage.mark_paste_seen("DarkWeb_Tor", paste_id, url, had_hits=True)
                 hits_found += 1
                 total_hits += 1
             except Exception as exc:
-                logger.debug("Failed to save Tor group hit: %s", exc)
+                logger.debug("Failed to save keyword hit for %s: %s", kw_lower, exc)
 
         per_target[url] = {
             "hits": hits_found,
-            "pii_found": len(pii_matches),
-            "groups_found": found_groups,
+            "matched_keywords": list(matched_keywords.values()),
             "text_length": len(text),
         }
-        logger.info("Onion scrape %s: %d hits, %d PII, groups=%s", url, hits_found, len(pii_matches), found_groups)
+        logger.info(
+            "Onion scrape %s: %d hits, matched_keywords=%s",
+            url, hits_found, list(matched_keywords.values()),
+        )
 
     return {
         "scanned": total_scanned,

@@ -440,7 +440,28 @@ class Storage:
         ("paste_hits", "group_name", "VARCHAR(100)"),
         ("paste_hits", "sector", "VARCHAR(100)"),
         ("paste_hits", "ransom_amount", "VARCHAR(100)"),
+        ("paste_hits", "status_badges", "VARCHAR(200)"),
     )
+
+    _SEED_COLUMN_MIGRATIONS = (
+        ("seeds", "attempt_count", "INTEGER DEFAULT 0"),
+    )
+
+    # ── Seeds table ──────────────────────────────────────────────────────────────
+    # Imported at class definition time so the model is registered on Base.
+    from . import storage_ke as _ke  # noqa: F401
+
+    class Seed(Base):
+        __tablename__ = "seeds"
+
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        url = Column(String(500), unique=True, nullable=False, index=True)
+        source_type = Column(String(50), nullable=False)
+        last_crawled_at = Column(DateTime, nullable=True)
+        hit_count = Column(Integer, default=0)
+        attempt_count = Column(Integer, default=0)
+        active = Column(Boolean, default=True)
+
 
     def _migrate_missing_columns(self):
         """Add columns that were introduced after the table was first created."""
@@ -454,6 +475,23 @@ class Storage:
             return
 
         for table, column, ddl_type in self._PASTE_HIT_COLUMN_MIGRATIONS:
+            if table not in existing_tables:
+                continue
+            try:
+                cols = {c["name"] for c in inspector.get_columns(table)}
+            except Exception:
+                continue
+            if column in cols:
+                continue
+            try:
+                with self.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {ddl_type}'))
+                logger.info("Migrated: added %s.%s %s", table, column, ddl_type)
+            except Exception as exc:
+                logger.warning("Could not add column %s.%s: %s", table, column, exc)
+
+        # ── Seeds table columns ──────────────────────────────────────────
+        for table, column, ddl_type in self._SEED_COLUMN_MIGRATIONS:
             if table not in existing_tables:
                 continue
             try:
@@ -1516,11 +1554,60 @@ class Storage:
                                       url=url, had_hits=had_hits))
                 session.commit()
 
+    # ── Onion seeds table ──────────────────────────────────────────────────
+
+    def get_active_seeds(self) -> list[str]:
+        """URLs of rows in the ``seeds`` table with ``active = TRUE``.
+
+        The crawler reads its starting URLs from here (never from a hardcoded
+        list). Idempotent and safe to call on every crawl start.
+        """
+        with self.get_session() as session:
+            rows = (
+                session.query(Storage.Seed.url)
+                .filter(Storage.Seed.active.is_(True))
+                .order_by(Storage.Seed.url)
+                .all()
+            )
+        return [row[0] for row in rows]
+
+    def get_paste_hit_patterns(self, paste_id: str) -> set[str]:
+        """``matched_pattern`` values already stored for ``paste_id``.
+
+        Used to deduplicate paste_hits inserts by (paste_id, matched_pattern)
+        so re-crawling the same onion page never creates duplicate rows.
+        """
+        with self.get_session() as session:
+            rows = (
+                session.query(PasteHit.matched_pattern)
+                .filter(PasteHit.paste_id == paste_id)
+                .all()
+            )
+        return {row[0] for row in rows}
+
+    def increment_seed_attempt(self, url: str) -> None:
+        """Increment ``attempt_count`` for a seed; deactivate it at 3 failures.
+
+        ``last_crawled_at`` is always refreshed to NOW(). Safe to call for
+        URLs that have no seed row (no-op).
+        """
+        with self.get_session() as session:
+            record = session.query(Storage.Seed).filter(Storage.Seed.url == url).first()
+            if record is None:
+                return
+            record.attempt_count = (record.attempt_count or 0) + 1
+            record.last_crawled_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            if record.attempt_count >= 3:
+                record.active = False
+            session.commit()
+
+
     def save_paste_hit(self, paste_id: str, url: str, source: str,
                        matched_pattern: str, matched_value: str = None,
                        context: str = None, victim: str = None,
                        group_name: str = None, sector: str = None,
-                       ransom_amount: str = None, found_at: datetime = None) -> int:
+                       ransom_amount: str = None, found_at: datetime = None,
+                       status_badges: str = None) -> int:
         with self.get_session() as session:
             h = PasteHit(paste_id=paste_id, url=url, source=source,
                          matched_pattern=matched_pattern,
@@ -1528,6 +1615,8 @@ class Storage:
                          victim=victim, group_name=group_name,
                          sector=sector, ransom_amount=ransom_amount,
                          found_at=found_at or datetime.now(timezone.utc).replace(tzinfo=None))
+            if status_badges is not None:
+                h.status_badges = status_badges
             session.add(h)
             session.commit()
             session.refresh(h)
@@ -1550,6 +1639,21 @@ class Storage:
                 "sector": h.sector, "ransom_amount": h.ransom_amount,
                 "found_at": h.found_at.isoformat() if h.found_at else None,
             } for h in hits]
+
+    def get_paste_hits(self) -> list[dict]:
+        """Return all paste hits with the text columns used for actor matching
+        (group_name, context, matched_value). No arbitrary limit so the count
+        is exact, not truncated by a lookback window."""
+        with self.get_session() as session:
+            rows = session.query(PasteHit).order_by(PasteHit.found_at.desc()).all()
+        return [{
+            "id": h.id, "paste_id": h.paste_id, "url": h.url,
+            "source": h.source, "matched_pattern": h.matched_pattern,
+            "matched_value": h.matched_value, "context": h.context,
+            "victim": h.victim, "group_name": h.group_name,
+            "sector": h.sector, "ransom_amount": h.ransom_amount,
+            "found_at": h.found_at.isoformat() if h.found_at else None,
+        } for h in rows]
 
     def purge_paste_hits(self) -> int:
         with self.get_session() as session:
