@@ -343,7 +343,7 @@ class ThreatIOC(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     indicator = Column(String(500), nullable=False, index=True)
     type = Column(String(20), nullable=False, index=True)
-    threat_type = Column(String(100), nullable=True, index=True)
+    threat_type = Column(Text, nullable=True, index=True)
     source = Column(String(100), nullable=True, index=True)
     date_added = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
 

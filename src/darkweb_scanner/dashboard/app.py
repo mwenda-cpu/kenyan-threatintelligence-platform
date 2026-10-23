@@ -9,7 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import requests
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, redirect, request, session, url_for
 from sqlalchemy import text
 from werkzeug.middleware.proxy_fix import ProxyFix
 

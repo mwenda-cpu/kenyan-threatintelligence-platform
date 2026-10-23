@@ -15,9 +15,10 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Local SMTP (MailHog / localhost) for development; override via env for production.
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "")
-MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "intel.osintph.info")
-MAILGUN_FROM = os.getenv("MAILGUN_FROM", "OSINT PH Threat Intel <digest@intel.osintph.info>")
+MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "")
+MAILGUN_FROM = os.getenv("MAILGUN_FROM", "Threat Intel <digest@intel.osintph.info>")
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 SUBSCRIBERS_FILE = DATA_DIR / "digest_subscribers.txt"
 
@@ -362,8 +363,7 @@ def build_email_html(feed_data: dict, date_str: str, stats: dict) -> str:  # noq
 
 
 def send_digest(storage, recipients: list = None, date: datetime = None) -> dict:
-    if not MAILGUN_API_KEY:
-        return {"ok": False, "error": "MAILGUN_API_KEY not set in environment"}
+    # Local SMTP is always available for dev; warn but proceed.
     if recipients is None:
         recipients = load_subscribers()
     if not recipients:
@@ -401,22 +401,42 @@ def send_digest(storage, recipients: list = None, date: datetime = None) -> dict
     html_body = build_email_html(feed_data, date_str, stats)
     text_body = f"Daily Threat Intelligence powered by OSINT PH\n{date_str}\nFull report attached.\nosintph.info"
 
+    if not MAILGUN_API_KEY:
+        logger.error("MAILGUN_API_KEY is not set; cannot send digest")
+        return {"ok": False, "error": "MAILGUN_API_KEY not set"}
+
+    import requests as _requests
+    from email import encoders
+    from email.mime.base import MIMEBase
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
     errors, sent = [], 0
     for recipient in recipients:
         try:
-            resp = requests.post(
+            msg = MIMEMultipart()
+            msg["From"] = MAILGUN_FROM
+            msg["To"] = recipient
+            msg["Subject"] = subject
+            msg.attach(MIMEText(text_body, "plain"))
+            msg.attach(MIMEText(html_body, "html"))
+            part = MIMEBase("application", "pdf")
+            part.set_payload(pdf_bytes)
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
+            msg.attach(part)
+
+            resp = _requests.post(
                 f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
                 auth=("api", MAILGUN_API_KEY),
-                files=[("attachment", (filename, pdf_bytes, "application/pdf"))],
-                data={"from": MAILGUN_FROM, "to": recipient, "subject": subject,
-                      "html": html_body, "text": text_body},
+                data={"from": MAILGUN_FROM, "to": recipient, "subject": subject, "text": text_body, "html": html_body},
+                files={"attachment": (filename, pdf_bytes, "application/pdf")},
                 timeout=30,
             )
-            if resp.status_code == 200:
-                sent += 1
-                logger.info(f"Digest sent to {recipient}")
-            else:
-                errors.append(f"{recipient}: HTTP {resp.status_code}")
+            if resp.status_code not in (200, 202):
+                raise RuntimeError(f"Mailgun {resp.status_code}: {resp.text}")
+            sent += 1
+            logger.info(f"Digest sent to {recipient}")
         except Exception as e:
             errors.append(f"{recipient}: {e}")
 

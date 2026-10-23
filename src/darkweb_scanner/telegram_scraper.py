@@ -7,6 +7,7 @@ Requires a Telegram API ID and Hash from https://my.telegram.org
 import asyncio
 import logging
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -20,6 +21,7 @@ class TelegramConfig:
     api_hash: str
     session_path: str
     channels: list[str]
+    session_string: Optional[str] = None
     limit_per_channel: int = 200
 
     @classmethod
@@ -34,6 +36,7 @@ class TelegramConfig:
             api_id=int(api_id),
             api_hash=api_hash,
             session_path=os.getenv("TELEGRAM_SESSION_PATH", "/app/data/telegram.session"),
+            session_string=os.getenv("TELEGRAM_SESSION_STRING"),
             channels=channels,
             limit_per_channel=int(os.getenv("TELEGRAM_LIMIT_PER_CHANNEL", "200")),
         )
@@ -58,6 +61,7 @@ async def scrape_channels(
             UsernameInvalidError,
             UsernameNotOccupiedError,
         )
+        from telethon.sessions import StringSession
     except ImportError:
         logger.error("telethon not installed. Run: pip install telethon")
         return {"pages_scraped": 0, "hits_found": 0}
@@ -66,16 +70,32 @@ async def scrape_channels(
         logger.warning("No Telegram channels configured. Set TELEGRAM_CHANNELS in .env")
         return {"pages_scraped": 0, "hits_found": 0}
 
+    # Resolve the Telethon session: TELEGRAM_SESSION_STRING env var takes
+    # precedence, then a .session file on disk, otherwise we cannot run in a
+    # headless environment (no interactive OTP/2FA prompts possible).
     session_file = Path(config.session_path)
-    if not session_file.exists():
-        logger.error(
-            f"Telegram session not found at {config.session_path}. "
-            "Run: make telegram-auth to authenticate first."
-        )
+    if config.session_string:
+        session = StringSession(config.session_string)
+    elif session_file.exists():
+        session = str(session_file.with_suffix(""))
+    else:
+        headless = not sys.stdin.isatty()
+        if headless:
+            logger.error(
+                "Interactive login required. No Telegram session found and "
+                "TELEGRAM_SESSION_STRING is not set. Generate a .session file "
+                "via 'make telegram-auth' on a machine with a TTY, or set "
+                "TELEGRAM_SESSION_STRING to a StringSession value."
+            )
+        else:
+            logger.error(
+                f"Telegram session not found at {config.session_path}. "
+                "Run: make telegram-auth to authenticate first."
+            )
         return {"pages_scraped": 0, "hits_found": 0}
 
     client = TelegramClient(
-        str(session_file.with_suffix("")),
+        session,
         config.api_id,
         config.api_hash,
     )
@@ -163,6 +183,19 @@ async def interactive_auth(config: TelegramConfig):
 
     session_file = Path(config.session_path)
     session_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Refuse to run interactive auth in a non-interactive (headless) context:
+    # client.start() would block on stdin for phone/OTP/2FA and raise EOFError.
+    if not sys.stdin.isatty():
+        print(
+            "\nERROR: Interactive login required but running in a "
+            "non-interactive (headless) environment. Telethon cannot prompt for "
+            "phone/OTP/2FA here.\n"
+            "       Generate a session on a machine with a TTY via 'make "
+            "telegram-auth', then copy the .session file (or StringSession) "
+            "into this environment. Alternatively set TELEGRAM_SESSION_STRING."
+        )
+        return
 
     print(f"\n{'=' * 55}")
     print("  Telegram Authentication")

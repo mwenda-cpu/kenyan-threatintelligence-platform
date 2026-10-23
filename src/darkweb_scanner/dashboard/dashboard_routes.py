@@ -648,9 +648,16 @@ def api_crawl_start():
         if STOP_FLAG.exists():
             STOP_FLAG.unlink()
 
+        # Record a crawl session so /api/crawl/status can report the running
+        # state. Dashboard-started crawls otherwise have no CrawlSession row,
+        # which made get_active_session() return None even while the thread
+        # was alive (frontend showed "No active crawl"; re-start hit 409).
+        session_id = storage.create_crawl_session(seed_urls)
+
         def run():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            result = {"fetched": 0, "hits": 0}
             try:
                 crawl_config = CrawlConfig()
 
@@ -661,7 +668,7 @@ def api_crawl_start():
                     )
                     return await task
 
-                loop.run_until_complete(_main())
+                result = loop.run_until_complete(_main())
             except Exception as e:
                 print(f"Scan thread error: {e}", flush=True)
                 traceback.print_exc()
@@ -669,6 +676,12 @@ def api_crawl_start():
                 loop.close()
                 if STOP_FLAG.exists():
                     STOP_FLAG.unlink()
+                storage.update_crawl_session(
+                    session_id,
+                    result.get("fetched", 0),
+                    result.get("hits", 0),
+                    status="completed",
+                )
 
         _active_scan_thread = threading.Thread(target=run, daemon=True, name="crawl_thread")
         _active_scan_thread.start()
@@ -695,34 +708,41 @@ def api_crawl_stop():
 def api_crawl_status():
     try:
         storage = get_storage()
+        import threading as _threading
+
+        thread_alive = any(t.name == "crawl_thread" and t.is_alive()
+                           for t in _threading.enumerate())
         # If DB shows running but no thread is alive, mark it completed
         active = storage.get_active_session()
-        if active and active.get("status") == "running":
-            thread_alive = any(t.name == "crawl_thread" and t.is_alive()
-                               for t in __import__("threading").enumerate())
-            if not thread_alive:
-                from datetime import datetime as _dt
+        if active and active.get("status") == "running" and not thread_alive:
+            from datetime import datetime as _dt
 
-                from sqlalchemy import text as _text
-                with storage.get_session() as sess:
-                    sess.execute(
-                        _text(
-                            "UPDATE crawl_sessions"
-                            " SET status='completed', ended_at=:now"
-                            " WHERE status='running'"
-                        ),
-                        {"now": _dt.now(timezone.utc).replace(tzinfo=None)},
-                    )
-                    sess.commit()
+            from sqlalchemy import text as _text
+            with storage.get_session() as sess:
+                sess.execute(
+                    _text(
+                        "UPDATE crawl_sessions"
+                        " SET status='completed', ended_at=:now"
+                        " WHERE status='running'"
+                    ),
+                    {"now": _dt.now(timezone.utc).replace(tzinfo=None)},
+                )
+                sess.commit()
+            active = None
         stats = storage.get_stats()
         active = storage.get_active_session()
 
         # Auto-clear stale stop flag if no scan is actually running
-        if not active and STOP_FLAG.exists():
+        if not active and not thread_alive and STOP_FLAG.exists():
             try:
                 STOP_FLAG.unlink()
             except Exception:
                 pass
+
+        # A crawl is active when the DB has a running session OR the crawl
+        # thread is alive (dashboard-started crawls now create a CrawlSession
+        # row; the thread-alive check guards against a missing/stale row).
+        is_active = bool(active) or thread_alive
 
         session_data = None
         if active:
@@ -734,8 +754,10 @@ def api_crawl_status():
                 "pages_crawled": live_pages,
                 "hits_found": live_hits,
             }
+
         return jsonify({
-            "active": active is not None,
+            "status": "running" if is_active else "idle",
+            "active": is_active,
             "session": session_data,
             "stats": stats,
         })
@@ -4864,6 +4886,28 @@ def api_breaches_directory():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+
+@dashboard_bp.route("/settings")
+@require_login
+def settings_page():
+    return render_template("settings.html")
+
+
+@dashboard_bp.route("/api/settings/profile", methods=["PUT"])
+@require_login
+def api_profile_update():
+    body = request.get_json() or {}
+    email = (body.get("email") or "").strip()
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+    user.email = email or user.email
+    with storage.get_session() as s:
+        s.merge(user)
+        s.commit()
+    return jsonify({"ok": True})
 
 
 @dashboard_bp.route("/api/health")

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Settings — Threat Intel Platform</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg:#0d1117; --surface:#161b22; --surface2:#21262d; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --red:#f85149; --green:#3fb950; }
+    body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; padding:24px; }
+    .wrap { max-width:800px; margin:0 auto; }
+    h1 { font-size:1.4rem; margin-bottom:16px; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; margin-bottom:16px; }
+    .card h2 { font-size:1rem; margin-bottom:12px; }
+    label { display:block; font-size:.85rem; color:var(--muted); margin-bottom:4px; }
+    input, select { width:100%; padding:8px 12px; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:6px; margin-bottom:12px; }
+    .btn { padding:8px 16px; border-radius:6px; border:none; cursor:pointer; font-weight:600; }
+    .btn-primary { background:var(--accent); color:#fff; }
+    .msg { font-size:.85rem; margin-top:8px; }
+    .msg.ok { color:var(--green); }
+    .msg.err { color:var(--red); }
+    a.back { color:var(--accent); text-decoration:none; display:inline-block; margin-bottom:16px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/dashboard">← Back to Dashboard</a>
+    <h1>Settings</h1>
+
+    <div class="card">
+      <h2>Change Password</h2>
+      <label>Current Password</label>
+      <input type="password" id="curPw"/>
+      <label>New Password</label>
+      <input type="password" id="newPw"/>
+      <label>Confirm New Password</label>
+      <input type="password" id="confPw"/>
+      <button class="btn btn-primary" onclick="changePw()">Update Password</button>
+      <div class="msg" id="pwMsg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Update Email</h2>
+      <label>Email Address</label>
+      <input type="email" id="emailInput" placeholder="you@example.com"/>
+      <button class="btn btn-primary" onclick="updateEmail()">Update Email</button>
+      <div class="msg" id="emailMsg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Notification Preferences</h2>
+      <label><input type="checkbox" id="notifDigest"/> Daily Digest Email</label><br/>
+      <label><input type="checkbox" id="notifAlerts"/> Threat Alerts</label><br/>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="saveNotif()">Save Preferences</button>
+      <div class="msg" id="notifMsg"></div>
+    </div>
+  </div>
+  <script>
+    async function changePw() {
+      const r = await fetch('/api/settings/password', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({current_password: document.getElementById('curPw').value, new_password: document.getElementById('newPw').value, confirm_password: document.getElementById('confPw').value})});
+      const d = await r.json();
+      const m = document.getElementById('pwMsg');
+      if (r.ok) { m.textContent='Password updated.'; m.className='msg ok'; }
+      else { m.textContent = d.error||'Failed'; m.className='msg err'; }
+    }
+    async function updateEmail() {
+      const r = await fetch('/api/settings/profile', {method:'PUT', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({email: document.getElementById('emailInput').value})});
+      const d = await r.json();
+      const m = document.getElementById('emailMsg');
+      if (r.ok) { m.textContent='Email updated.'; m.className='msg ok'; }
+      else { m.textContent = d.error||'Failed'; m.className='msg err'; }
+    }
+    function saveNotif() {
+      localStorage.setItem('notif_digest', document.getElementById('notifDigest').checked);
+      localStorage.setItem('notif_alerts', document.getElementById('notifAlerts').checked);
+      const m = document.getElementById('notifMsg'); m.textContent='Saved.'; m.className='msg ok';
+    }
+    (function(){ const d=localStorage.getItem('notif_digest'); const a=localStorage.getItem('notif_alerts');
+      if(d!==null) document.getElementById('notifDigest').checked = d==='true';
+      if(a!==null) document.getElementById('notifAlerts').checked = a==='true'; })();
+  </script>
+</body>
+</html>
