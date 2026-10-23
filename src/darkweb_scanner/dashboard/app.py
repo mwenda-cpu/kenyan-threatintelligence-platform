@@ -9,7 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import requests
-from flask import Flask, jsonify, redirect, url_for
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import text
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -169,8 +169,15 @@ def create_app() -> Flask:
     app.secret_key = _secret
     app.permanent_session_lifetime = timedelta(hours=12)
 
+    # Secure session cookies behind Nginx + ngrok HTTPS termination.
+    app.config.update(
+        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE='Lax'
+    )
+
     # Trust X-Forwarded-Proto from nginx so url_for generates https:// URLs
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
 
     from .auth_routes import auth_bp
     from .channel_monitor_routes import channel_monitor_bp
@@ -225,7 +232,9 @@ def create_app() -> Flask:
 
     @app.route("/")
     def root():
-        return redirect(url_for("dashboard.index"))
+        if session.get("logged_in"):
+            return redirect(url_for("dashboard.index"))
+        return redirect(url_for("auth.login"))
 
     return app
 

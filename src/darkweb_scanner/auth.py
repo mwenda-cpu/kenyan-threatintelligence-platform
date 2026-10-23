@@ -44,7 +44,7 @@ def require_login(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not is_authenticated():
-            return redirect(url_for("auth.login", next=request.path))
+            return redirect(url_for("auth.login"))
         # Block access until password change is done
         if session.get("must_change_password"):
             return redirect(url_for("auth.force_change_password"))

@@ -71,6 +71,8 @@ services:
       - ./config:/app/config
       - ./data:/app/data
       - ./scripts:/app/scripts
+    ports:
+      - "8080:8080"  
     expose:
       - "8080"
     networks:

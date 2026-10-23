@@ -20,14 +20,20 @@ generate_self_signed() {
 write_nginx_config() {
   cat > /etc/nginx/conf.d/darkweb.conf <<EOF
 server {
-    listen 80;
-    server_name ${DOMAIN:-_};
+    listen 80 default_server;
+    server_name _;
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
-    location / { return 301 https://\$host\$request_uri; }
+    location / {
+        proxy_pass http://dashboard:8080;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
+    }
 }
 server {
     listen 443 ssl;
-    server_name ${DOMAIN:-_};
+    server_name ${DOMAIN:-_} prepaid-runny-publisher.ngrok-free.dev;
     ssl_certificate     $CERT_DIR/cert.pem;
     ssl_certificate_key $CERT_DIR/key.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -46,7 +52,7 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
         proxy_read_timeout 300s;
         proxy_connect_timeout 10s;
     }
@@ -66,6 +72,7 @@ server {
     listen 80;
     server_name ${WWW_DOMAIN} www.${WWW_DOMAIN} osintph.net www.osintph.net;
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    if (\$http_x_forwarded_proto != "https") { return 301 https://\$host\$request_uri; }
     location / { return 301 https://\$host\$request_uri; }
 }
 server {
@@ -97,11 +104,12 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
         proxy_http_version 1.1;
     }
 }
 EOF
+
     echo "[nginx] www virtual host configured for: ${WWW_DOMAIN}"
   fi
 
@@ -112,6 +120,7 @@ server {
     listen 80;
     server_name ${THREATWATCH_DOMAIN};
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    if (\$http_x_forwarded_proto != "https") { return 301 https://\$host\$request_uri; }
     location / { return 301 https://\$host\$request_uri; }
 }
 server {
@@ -145,7 +154,7 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
         proxy_http_version 1.1;
     }
 
@@ -197,6 +206,7 @@ server {
     listen 80;
     server_name webcheck.${DOMAIN#*.};
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    if (\$http_x_forwarded_proto != "https") { return 301 https://\$host\$request_uri; }
     location / { return 301 https://\$host\$request_uri; }
 }
 server {
@@ -212,7 +222,7 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$http_x_forwarded_proto;
         proxy_read_timeout 300s;
     }
 }
