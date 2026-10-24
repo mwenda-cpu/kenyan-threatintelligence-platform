@@ -628,6 +628,7 @@
       <a href="#" data-tab="ip-lookup"> IP Lookup</a>
       <a href="#" data-tab="paste-monitor">PST Paste Monitor</a>
       <a href="#" data-tab="breach-directory">DIR Breach Directory</a>
+      <a class="dropdown-item" href="{{ url_for('dashboard.cve_panel') }}">CVE Panel</a>
     </div>
   </div>
 
@@ -1960,9 +1961,14 @@
   document.querySelectorAll('.nav-dropdown-menu a, .nav-item[data-tab]').forEach(el => {
 
     el.addEventListener('click', (e) => {
-    e.preventDefault();
     const tab = el.dataset.tab;
-    if (!tab) return;
+    if (!tab) {
+      const href = el.getAttribute('href');
+      if (href && href !== '#') return;
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
 
     // Update active state
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));

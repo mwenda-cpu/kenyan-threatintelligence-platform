@@ -45,6 +45,16 @@ def require_login(f):
     def decorated(*args, **kwargs):
         if not is_authenticated():
             return redirect(url_for("auth.login"))
+        # Handle stale sessions (e.g. after a DB reset) gracefully.
+        try:
+            from .dashboard.storage_helper import get_storage
+
+            user = get_storage().get_user_by_id(session.get("user_id"))
+        except Exception:
+            user = None
+        if not user:
+            session.clear()
+            return redirect(url_for("auth.login"))
         # Block access until password change is done
         if session.get("must_change_password"):
             return redirect(url_for("auth.force_change_password"))

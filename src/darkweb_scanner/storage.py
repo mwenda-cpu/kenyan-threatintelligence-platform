@@ -11,8 +11,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text, create_engine, func
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, create_engine, func
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, relationship
 
 logger = logging.getLogger(__name__)
 
@@ -365,6 +365,53 @@ class ContextualIntel(Base):
         Index("ix_contextual_intel_source", "source"),
         Index("ix_contextual_intel_extracted", "extracted_at"),
     )
+
+
+# ── CVE Intelligence Models ───────────────────────────────────────────────────
+
+
+class CVE(Base):
+    __tablename__ = "cves"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cve_id = Column(String(50), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    cvss_score = Column(String(20), nullable=True)
+    epss_score = Column(String(20), nullable=True)
+    kev_flag = Column(Boolean, default=False)
+    published_date = Column(DateTime, nullable=True)
+    affected_products = Column(Text, nullable=True)
+    source = Column(String(100), nullable=True)  # cisa_kev | epss | nvd
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+
+    __table_args__ = (
+        Index("ix_cves_cve_id", "cve_id"),
+        Index("ix_cves_kev", "kev_flag"),
+    )
+
+
+class KenyanAsset(Base):
+    __tablename__ = "kenyan_assets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_name = Column(String(255), nullable=False, index=True)
+    vendor = Column(String(255), nullable=True)
+    affected_versions = Column(Text, nullable=True)
+    sector = Column(String(50), nullable=True, index=True)  # gov, bank, mobile_money, fintech
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+
+class CVEAlert(Base):
+    __tablename__ = "cve_alerts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cve_id = Column(String(50), ForeignKey("cves.cve_id"), nullable=False, index=True)
+    asset_id = Column(Integer, ForeignKey("kenyan_assets.id"), nullable=False, index=True)
+    priority_score = Column(String(20), nullable=True)  # High | Medium
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
+
+    cve = relationship("CVE", foreign_keys=[cve_id], primaryjoin="CVEAlert.cve_id == CVE.cve_id")
+    kenyan_asset = relationship("KenyanAsset", foreign_keys=[asset_id])
 
 
 # ── Quick Scan Models ───────────────────────────────────────────────────────────
@@ -1954,10 +2001,152 @@ class Storage:
             if source:
                 q = q.filter(ContextualIntel.source == source)
             rows = q.order_by(ContextualIntel.extracted_at.desc()).limit(limit).all()
-            return [{"id": r.id, "source": r.source, "title": r.title, "summary": r.summary, "url": r.url, "extracted_at": r.extracted_at.isoformat() if r.extracted_at else None} for r in rows]
+            return [
+                {
+                    "id": r.id,
+                    "source": r.source,
+                    "title": r.title,
+                    "summary": r.summary,
+                    "url": r.url,
+                    "extracted_at": r.extracted_at.isoformat() if r.extracted_at else None,
+                }
+                for r in rows
+            ]
 
+    # --- CVE Intelligence ---
 
+    def upsert_cve(
+        self,
+        cve_id: str,
+        description: str = None,
+        cvss_score: str = None,
+        epss_score: str = None,
+        kev_flag: bool = False,
+        published_date=None,
+        affected_products: str = None,
+        source: str = None,
+    ):
+        with self.get_session() as session:
+            record = session.query(CVE).filter(CVE.cve_id == cve_id).first()
+            if record is None:
+                record = CVE(
+                    cve_id=cve_id,
+                    description=description,
+                    cvss_score=cvss_score,
+                    epss_score=epss_score,
+                    kev_flag=kev_flag,
+                    published_date=published_date,
+                    affected_products=affected_products,
+                    source=source,
+                )
+                session.add(record)
+            else:
+                if description is not None:
+                    record.description = description
+                if cvss_score is not None:
+                    record.cvss_score = cvss_score
+                if epss_score is not None:
+                    record.epss_score = epss_score
+                record.kev_flag = kev_flag
+                if published_date is not None:
+                    record.published_date = published_date
+                if affected_products is not None:
+                    record.affected_products = affected_products
+                if source is not None:
+                    record.source = source
+            session.commit()
 
+    def get_cves(self, limit=200):
+        with self.get_session() as session:
+            rows = session.query(CVE).order_by(CVE.created_at.desc()).limit(limit).all()
+            return [
+                {
+                    "id": r.id,
+                    "cve_id": r.cve_id,
+                    "description": r.description,
+                    "cvss_score": r.cvss_score,
+                    "epss_score": r.epss_score,
+                    "kev_flag": r.kev_flag,
+                    "published_date": r.published_date.isoformat() if r.published_date else None,
+                    "affected_products": r.affected_products,
+                    "source": r.source,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ]
+
+    def upsert_kenyan_asset(self, product_name, vendor=None, affected_versions=None, sector=None):
+        with self.get_session() as session:
+            record = (
+                session.query(KenyanAsset)
+                .filter(KenyanAsset.product_name == product_name)
+                .first()
+            )
+            if record is None:
+                record = KenyanAsset(
+                    product_name=product_name,
+                    vendor=vendor,
+                    affected_versions=affected_versions,
+                    sector=sector,
+                )
+                session.add(record)
+            else:
+                record.vendor = vendor
+                record.affected_versions = affected_versions
+                record.sector = sector
+            session.commit()
+            return record.id
+
+    def get_kenyan_assets(self):
+        with self.get_session() as session:
+            rows = session.query(KenyanAsset).order_by(KenyanAsset.sector, KenyanAsset.product_name).all()
+            return [
+                {
+                    "id": r.id,
+                    "product_name": r.product_name,
+                    "vendor": r.vendor,
+                    "affected_versions": r.affected_versions,
+                    "sector": r.sector,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ]
+
+    def save_cve_alert(self, cve_id, asset_id, priority_score):
+        with self.get_session() as session:
+            record = CVEAlert(
+                cve_id=cve_id,
+                asset_id=asset_id,
+                priority_score=priority_score,
+            )
+            session.add(record)
+            session.commit()
+            return record.id
+
+    def get_cve_alerts(self, limit=200):
+        with self.get_session() as session:
+            rows = (
+                session.query(CVEAlert)
+                .join(CVE, CVEAlert.cve_id == CVE.cve_id)
+                .join(KenyanAsset, CVEAlert.asset_id == KenyanAsset.id)
+                .order_by(CVEAlert.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return [
+                {
+                    "id": r.id,
+                    "cve_id": r.cve.cve_id,
+                    "asset_name": r.kenyan_asset.product_name,
+                    "sector": r.kenyan_asset.sector,
+                    "priority_score": r.priority_score,
+                    "kev_flag": r.cve.kev_flag,
+                    "epss_score": r.cve.epss_score,
+                    "cvss_score": r.cve.cvss_score,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ]
 
 
 # --- Singleton accessor ---

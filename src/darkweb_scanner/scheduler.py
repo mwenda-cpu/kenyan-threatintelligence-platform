@@ -37,6 +37,14 @@ JOBS.update(
             "darkweb_scanner.scrapers.context_scraper",
             "scrape_context",
         ),
+        "cve_ingestor": (
+            "darkweb_scanner.scrapers.cve_ingestor",
+            "run_cve_ingestor",
+        ),
+        "cve_correlator": (
+            "darkweb_scanner.scrapers.cve_correlator",
+            "correlate_cves",
+        ),
     }
 )
 

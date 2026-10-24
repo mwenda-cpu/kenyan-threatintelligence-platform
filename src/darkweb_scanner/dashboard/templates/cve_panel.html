@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CVE Intelligence Panel — Threat Intel Platform</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+      --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+      --accent: #58a6ff; --red: #f85149; --green: #3fb950; --yellow: #d29922;
+      --font: 'Segoe UI', system-ui, sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.05em; }
+    .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; }
+    .badge-high { background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.4); }
+    .badge-medium { background: rgba(210,153,34,0.12); color: #d29922; border: 1px solid rgba(210,153,34,0.35); }
+    .kev-yes { color: #f85149; font-weight: 700; }
+    .kev-no { color: var(--muted); }
+    .empty { text-align: center; padding: 40px; color: var(--muted); }
+    .back-link { display: inline-block; margin-bottom: 16px; color: var(--accent); text-decoration: none; font-size: 0.85rem; }
+    .back-link:hover { text-decoration: underline; }
+    .actions { margin-bottom: 16px; display: flex; gap: 8px; }
+    .btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); color: var(--text); cursor: pointer; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/dashboard" class="back-link">&larr; Back to Dashboard</a>
+    <h1>CVE Intelligence Panel</h1>
+    <div class="actions">
+      <button id="fetchBtn" class="btn" onclick="fetchCVEs()">Fetch Latest CVEs</button>
+      <button id="corrBtn" class="btn" onclick="runCorrelation()">Run Correlation</button>
+    </div>
+
+    <div class="card">
+      {% if alerts %}
+      <table>
+        <thead>
+          <tr>
+            <th>CVE ID</th>
+            <th>Asset Name</th>
+            <th>Sector</th>
+            <th>Priority</th>
+            <th>KEV</th>
+            <th>EPSS</th>
+            <th>CVSS</th>
+            <th>Detected</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in alerts %}
+          <tr>
+            <td>{{ a.cve_id }}</td>
+            <td>{{ a.asset_name }}</td>
+            <td>{{ a.sector }}</td>
+            <td>
+              {% if a.priority_score == 'High' %}
+                <span class="badge badge-high">High</span>
+              {% else %}
+                <span class="badge badge-medium">Medium</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if a.kev_flag %}
+                <span class="kev-yes">Yes</span>
+              {% else %}
+                <span class="kev-no">No</span>
+              {% endif %}
+            </td>
+            <td>{{ a.epss_score or 'N/A' }}</td>
+            <td>{{ a.cvss_score or 'N/A' }}</td>
+            <td>{{ a.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">No CVE alerts yet. The ingestor will populate data on the next scheduled run.</div>
+      {% endif %}
+    </div>
+  </div>
+  <script>
+    async function post(url, btn, loadingText) {
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = loadingText;
+      try {
+        const res = await fetch(url, { method: 'POST' });
+        if (!res.ok) throw new Error('Request failed');
+        window.location.reload();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = original;
+        alert('Operation failed: ' + e.message);
+      }
+    }
+    function fetchCVEs() {
+      post('/api/cve/ingest', document.getElementById('fetchBtn'), 'Fetching...');
+    }
+    function runCorrelation() {
+      post('/api/cve/correlate', document.getElementById('corrBtn'), 'Running...');
+    }
+  </script>
+</body>
+</html>

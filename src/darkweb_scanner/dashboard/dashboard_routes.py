@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
-from flask import Blueprint, Response, jsonify, render_template, request, session
+from flask import Blueprint, Response, jsonify, redirect, render_template, request, session, url_for
 
 from ..auth import hash_password, require_login, validate_password_strength
 from ..crawler import CrawlConfig, run_onion_crawl_cycle
@@ -91,7 +91,62 @@ def _keyword_store():
 def index():
     storage = get_storage()
     user = storage.get_user_by_id(session["user_id"])
+    if not user:
+        session.clear()
+        return redirect(url_for("auth.login"))
     return render_template("index.html", username=session.get("username"), is_admin=user.is_admin)
+
+
+@dashboard_bp.route("/cve-panel")
+@require_login
+def cve_panel():
+    storage = get_storage()
+    user = storage.get_user_by_id(session["user_id"])
+    if user is None:
+        return redirect(url_for("auth.login"))
+    return render_template(
+        "cve_panel.html",
+        username=session.get("username"),
+        is_admin=user.is_admin,
+        alerts=storage.get_cve_alerts(limit=200),
+    )
+
+
+@dashboard_bp.route("/api/cve/alerts", methods=["GET"])
+@require_login
+def api_cve_alerts():
+    storage = get_storage()
+    return jsonify(storage.get_cve_alerts(limit=200))
+
+
+@dashboard_bp.route("/api/cve/ingest", methods=["POST"])
+@require_login
+def api_cve_ingest():
+    import threading
+
+    def _run():
+        try:
+            from ..scrapers.cve_ingestor import run_all_ingestors
+
+            run_all_ingestors()
+        except Exception as exc:  # pragma: no cover - best effort background job
+            logger.error("CVE ingestion failed: %s", exc)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "message": "CVE ingestion started in background"})
+
+
+@dashboard_bp.route("/api/cve/correlate", methods=["POST"])
+@require_login
+def api_cve_correlate():
+    try:
+        from ..scrapers.cve_correlator import correlate_cves
+
+        correlate_cves()
+    except Exception as exc:
+        logger.error("CVE correlation failed: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify({"ok": True, "message": "CVE correlation complete"})
 
 
 # ── Stats & Hits API ───────────────────────────────────────────────────────────
