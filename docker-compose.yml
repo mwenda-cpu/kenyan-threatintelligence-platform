@@ -64,15 +64,14 @@ services:
       - postgres
     env_file:
       - .env
+    environment:
+      - FLASK_DEBUG=1
     volumes:
-      - ./config:/app/config:ro
-      - ./app_data:/app/data
       - ./src:/app/src
-      - ./config:/app/config
+      - ./config:/app/config:ro
       - ./data:/app/data
-      - ./scripts:/app/scripts
     ports:
-      - "8080:8080"  
+      - "8080:8080"
     expose:
       - "8080"
     networks:

@@ -76,6 +76,13 @@
       </div>
       <button type="submit" class="btn btn-primary">Create Account &amp; Continue</button>
     </form>
+
+    <div style="margin-top:24px; text-align:center; font-size:0.85rem; color:var(--muted);">
+      <p>
+        Already have an account?
+        <a href="{{ url_for('auth.login') }}" style="color:var(--accent); text-decoration:none;">Sign in here</a>
+      </p>
+    </div>
   </div>
 </body>
 </html>

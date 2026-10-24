@@ -6,8 +6,9 @@ Stores crawl results, keyword hits, and crawl session metadata.
 import json
 import logging
 import os
+import secrets
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text, create_engine, func
@@ -940,7 +941,6 @@ class Storage:
             if user:
                 session.delete(user)
                 session.commit()
-
     def update_user_password(self, user_id: int, password_hash: str):
         with self.get_session() as session:
             user = session.get(User, user_id)
@@ -948,6 +948,43 @@ class Storage:
                 user.password_hash = password_hash
                 session.commit()
 
+    # ── Password Reset Tokens (in-memory, TTL-based; mock email delivery) ──
+    _RESET_TOKENS: dict[str, dict] = {}  # email -> {"token": str, "expires_at": datetime}
+
+    def create_password_reset_token(self, email: str, ttl_minutes: int = 60) -> str:
+        """Generate a password reset token for ``email`` and return it.
+
+        The token is stored in memory with a TTL. In production this would be
+        delivered via SMTP; here it is logged to the console for testing.
+        """
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
+            minutes=ttl_minutes
+        )
+        self._RESET_TOKENS[email.lower()] = {
+            "token": token,
+            "expires_at": expires_at,
+        }
+        logger.info(
+            "[password reset] token for %s: %s (expires %s)",
+            email,
+            token,
+            expires_at.isoformat(),
+        )
+        return token
+
+    def consume_password_reset_token(self, email: str, token: str) -> bool:
+        """Consume and validate a password reset token. Returns True if valid."""
+        entry = self._RESET_TOKENS.get(email.lower())
+        if not entry:
+            return False
+        if entry["token"] != token:
+            return False
+        if datetime.now(timezone.utc).replace(tzinfo=None) > entry["expires_at"]:
+            del self._RESET_TOKENS[email.lower()]
+            return False
+        del self._RESET_TOKENS[email.lower()]
+        return True
 
 
     def count_session_hits(self, session_id: int) -> int:
@@ -1897,6 +1934,10 @@ class Storage:
             session.query(ThreatIOC).delete()
             session.commit()
         return count
+
+    def count_threat_iocs(self) -> int:
+        with self.get_session() as session:
+            return session.query(func.count(ThreatIOC.id)).scalar() or 0
 
     # Contextual Intel methods
     def save_contextual_intel(self, source, title=None, summary=None, url=None):

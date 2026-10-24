@@ -3,6 +3,7 @@ Auth blueprint — login, register, TOTP setup/verify, OAuth, logout.
 """
 
 import logging
+import os
 import secrets
 from urllib.parse import urlencode
 
@@ -33,15 +34,49 @@ def _safe_next(next_url: str, default: str) -> str:
     return default
 
 
+def send_reset_email(to_email: str, reset_url: str) -> bool:
+    """Send a password reset email via Mailgun.
+
+    Returns True on success, False on failure (error is logged).
+    """
+    api_key = os.getenv("MAILGUN_API_KEY")
+    domain = os.getenv("MAILGUN_DOMAIN")
+    if not api_key or not domain:
+        logger.error("Mailgun not configured (MAILGUN_API_KEY/MAILGUN_DOMAIN missing).")
+        return False
+
+    try:
+        resp = http_requests.post(
+            f"https://api.mailgun.net/v3/{domain}/messages",
+            auth=("api", api_key),
+            data={
+                "from": f"Threat Intel Platform <noreply@{domain}>",
+                "to": [to_email],
+                "subject": "Password Reset Request",
+                "html": (
+                    "<p>You requested a password reset for your Threat Intel "
+                    f"Platform account.</p>"
+                    f'<p><a href="{reset_url}">Reset your password</a></p>'
+                    "<p>If you did not request this, you can safely ignore this "
+                    "email.</p>"
+                ),
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        logger.info("Password reset email sent to %s", to_email)
+        return True
+    except Exception as e:  # noqa: BLE001 - never crash the auth flow on email failure
+        logger.error("Failed to send password reset email to %s: %s", to_email, e)
+        return False
+
+
 # ── Registration ───────────────────────────────────────────────────────────────
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     storage = get_storage()
-    if storage.count_users() > 0:
-        flash("Registration is closed. Contact your administrator.", "error")
-        return redirect(url_for("auth.login"))
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -77,6 +112,102 @@ def register():
         return redirect(url_for("auth.totp_setup"))
 
     return render_template("register.html")
+
+
+# ── Password Reset ─────────────────────────────────────────────────────────────
+
+
+@auth_bp.route("/reset_password", methods=["GET", "POST"])
+def reset_password():
+    """Request a password reset link (sent via Mailgun when configured)."""
+    if session.get("logged_in"):
+        return redirect(url_for("dashboard.index"))
+
+    storage = get_storage()
+
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        if not email:
+            flash("Email is required.", "error")
+            return render_template("reset_password.html")
+
+        user = storage.get_user_by_email(email)
+        if not user:
+            # Don't reveal whether the email exists.
+            flash(
+                "If an account with that email exists, a reset link has been "
+                "sent to that address.",
+                "info",
+            )
+            return render_template("reset_password.html")
+
+        token = storage.create_password_reset_token(email)
+        base_url = os.getenv("BASE_URL", "").rstrip("/")
+        reset_url = f"{base_url}/reset_password/{token}" if base_url else url_for(
+            "auth.reset_password_confirm", token=token, _external=True
+        )
+
+        if send_reset_email(email, reset_url):
+            flash(
+                "A password reset link has been sent to your email address.",
+                "info",
+            )
+        else:
+            flash(
+                "Failed to send password reset email. Please try again later.",
+                "error",
+            )
+        return render_template("reset_password.html")
+
+    return render_template("reset_password.html")
+
+
+@auth_bp.route("/reset_password/<token>", methods=["GET", "POST"])
+def reset_password_confirm(token):
+    """Set a new password using a reset token."""
+    if session.get("logged_in"):
+        return redirect(url_for("dashboard.index"))
+
+    storage = get_storage()
+
+    # Find the email associated with this token by scanning in-memory store.
+    email = None
+    for cand_email, entry in storage._RESET_TOKENS.items():
+        if entry["token"] == token:
+            email = cand_email
+            break
+
+    if email is None:
+        flash("Invalid or expired reset token.", "error")
+        return redirect(url_for("auth.reset_password"))
+
+    user = storage.get_user_by_email(email)
+    if not user:
+        flash("Account not found.", "error")
+        return redirect(url_for("auth.reset_password"))
+
+    if request.method == "POST":
+        new_pw = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        if not new_pw or new_pw != confirm:
+            flash("Passwords must match and not be empty.", "error")
+            return render_template("reset_confirm.html", token=token)
+
+        err = validate_password_strength(new_pw)
+        if err:
+            flash(err, "error")
+            return render_template("reset_confirm.html", token=token)
+
+        if not storage.consume_password_reset_token(email, token):
+            flash("Invalid or expired reset token.", "error")
+            return redirect(url_for("auth.reset_password"))
+
+        storage.update_user_password(user.id, hash_password(new_pw))
+        flash("Password reset successful. You can now sign in.", "success")
+        return redirect(url_for("auth.login"))
+
+    return render_template("reset_confirm.html", token=token)
 
 
 # ── Login ──────────────────────────────────────────────────────────────────────

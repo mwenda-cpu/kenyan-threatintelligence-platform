@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Threat Intelligence Platform — Dark Web Scanner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0b0c10; --surface: #12141c; --surface2: #1c202a;
+      --border: #2a2f3a; --text: #e6edf3; --muted: #8b949e;
+      --accent: #58a6ff; --red: #f85149; --green: #3fb950; --yellow: #d29922;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+    /* Header / nav */
+    header {
+      background: rgba(18, 20, 28, 0.6); backdrop-filter: blur(6px);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 50;
+    }
+    .header-inner {
+      max-width: 1100px; margin: 0 auto; padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; text-decoration: none; color: var(--text); }
+    .brand .badge {
+      display: inline-block; background: var(--red); color: #fff; font-size: 0.65rem;
+      padding: 2px 8px; border-radius: 20px; font-weight: 700; letter-spacing: 0.05em;
+    }
+    .nav-links { display: flex; gap: 22px; align-items: center; }
+    .nav-links a {
+      color: var(--muted); text-decoration: none; font-size: 0.9rem; font-weight: 500;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .btn-login { background: var(--accent); color: #0b0c10; border: none; padding: 8px 18px; border-radius: 6px; font-weight: 700; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
+    .btn-login:hover { opacity: 0.9; }
+
+    /* Hero */
+    .hero { padding: 72px 24px; text-align: center; }
+    .hero-inner { max-width: 860px; margin: 0 auto; }
+    .hero .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px; background: rgba(88,166,255,0.10);
+      border: 1px solid rgba(88,166,255,0.25); color: var(--accent);
+      padding: 6px 14px; border-radius: 999px; font-size: 0.8rem; font-weight: 700;
+      margin-bottom: 16px; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .hero h1 { font-size: clamp(2.2rem, 5vw, 3.4rem); font-weight: 800; line-height: 1.1; margin-bottom: 20px; letter-spacing: -0.02em; }
+    .hero h1 .accent { color: var(--accent); }
+    .hero p { font-size: clamp(1rem, 1.2vw, 1.25rem); color: var(--muted); line-height: 1.6; max-width: 620px; margin: 0 auto 30px; }
+
+    .cta-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 46px; }
+    .btn-primary {
+      background: var(--accent); color: #0b0c10; border: none; padding: 14px 28px;
+      border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer;
+      text-decoration: none; display: inline-block; transition: transform 0.15s, opacity 0.15s;
+    }
+    .btn-primary:hover { transform: translateY(-1px); opacity: 0.92; }
+    .btn-ghost {
+      background: transparent; color: var(--text); border: 1px solid var(--border);
+      padding: 14px 28px; border-radius: 8px; font-size: 1rem; font-weight: 600;
+      cursor: pointer; text-decoration: none; display: inline-block; transition: 0.15s;
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Mock metrics preview */
+    .metrics { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 26px 24px; margin-bottom: 46px; }
+    .metrics .metrics-title { font-size: 0.8rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; text-align: center; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; }
+    .metric-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 18px 16px; text-align: center; }
+    .metric-card .value { font-size: 1.75rem; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+    .metric-card .label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* Features */
+    .features { padding: 0 24px 72px; }
+    .features-inner { max-width: 1100px; margin: 0 auto; }
+    .section-head { text-align: center; margin-bottom: 36px; }
+    .section-head h2 { font-size: 1.9rem; font-weight: 800; margin-bottom: 10px; }
+    .section-head p { color: var(--muted); font-size: 1.05rem; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; }
+    .feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 26px 22px; }
+    .feature-card .icon { font-size: 1.6rem; margin-bottom: 14px; display: inline-block; }
+    .feature-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+    .feature-card p { color: var(--muted); font-size: 0.9rem; line-height: 1.55; }
+
+    footer {
+      border-top: 1px solid var(--border); background: var(--surface);
+      padding: 30px 24px; text-align: center;
+    }
+    footer p { color: var(--muted); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a href="/" class="brand">
+      Threat Intel <span class="badge">PLATFORM</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="/login">Login</a>
+      <a href="/register" class="btn-login">Get Started</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow">&#128270; Threat Intelligence</div>
+    <h1>Monitor the <span class="accent">dark web</span> before threats find you.</h1>
+    <p>Automated dark web and ransomware leak-site scanning, keyword intelligence,
+    IOC tracking, and Telegram channel monitoring for security teams.</p>
+
+    <div class="cta-group">
+      <a href="/login" class="btn-primary">Login / Register</a>
+      <a href="/dashboard" class="btn-ghost">View Dashboard</a>
+    </div>
+
+    <div class="metrics">
+      <div class="metrics-title">Live platform metrics</div>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="value">{{ ioc_count }}</div>
+          <div class="label">IOCs tracked</div>
+        </div>
+        <div class="metric-card">
+          <div class="value">{{ leak_count }}</div>
+          <div class="label">Paste hits / leaks</div>
+        </div>
+        <div class="metric-card">
+          <div class="value">{{ keyword_count }}</div>
+          <div class="label">Active keywords</div>
+        </div>
+        <div class="metric-card">
+          <div class="value">{{ crawl_count }}</div>
+          <div class="label">Crawl sessions</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="features" id="features">
+  <div class="features-inner">
+    <div class="section-head">
+      <h2>Capabilities</h2>
+      <p>Everything you need to surface and act on exposed threats.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <span class="icon">&#128736;</span>
+        <h3>Dark Web Scanning</h3>
+        <p>Crawl .onion leak sites and paste services for exposed credentials, domains, and PII.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">&#128274;</span>
+        <h3>Keyword Intelligence</h3>
+        <p>Track custom keywords across sources with severity scoring and hit forecasting.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">&#128421;</span>
+        <h3>Telegram Monitoring</h3>
+        <p>Monitor public Telegram channels for threat-actor chatter and IOC drops.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">&#128208;</span>
+        <h3>IOC Management</h3>
+        <p>Store, deduplicate, and search indicators of compromise with source attribution.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">&#128463;</span>
+        <h3>DNS Investigations</h3>
+        <p>Run DNS/OSINT lookups on domains and IPs linked to threat activity.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">&#128273;</span>
+        <h3>Secure Auth</h3>
+        <p>Local accounts with bcrypt hashing, TOTP 2FA, and optional OAuth providers.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>&copy; 2026 Threat Intelligence Platform. Dark Web Scanner &mdash; for authorized security research only.</p>
+</footer>
+
+</body>
+</html>

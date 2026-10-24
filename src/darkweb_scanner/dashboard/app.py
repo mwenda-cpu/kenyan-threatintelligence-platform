@@ -9,7 +9,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import requests
-from flask import Flask, jsonify, redirect, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import text
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -234,7 +234,22 @@ def create_app() -> Flask:
     def root():
         if session.get("logged_in"):
             return redirect(url_for("dashboard.index"))
-        return redirect(url_for("auth.login"))
+        storage = get_storage()
+        try:
+            stats = storage.get_stats()
+            ioc_count = storage.count_threat_iocs()
+            leak_count = stats.get("total_hits", 0)
+            keyword_count = len(storage.list_keywords())
+            crawl_count = stats.get("total_sessions", 0)
+        except Exception:
+            ioc_count = leak_count = keyword_count = crawl_count = 0
+        return render_template(
+            "landing.html",
+            ioc_count=ioc_count,
+            leak_count=leak_count,
+            keyword_count=keyword_count,
+            crawl_count=crawl_count,
+        )
 
     return app
 
