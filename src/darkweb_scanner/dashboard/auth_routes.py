@@ -5,6 +5,7 @@ Auth blueprint — login, register, TOTP setup/verify, OAuth, logout.
 import logging
 import os
 import secrets
+import threading
 from urllib.parse import urlencode
 
 import requests as http_requests
@@ -50,22 +51,20 @@ def send_reset_email(to_email: str, reset_url: str) -> bool:
             f"https://api.mailgun.net/v3/{domain}/messages",
             auth=("api", api_key),
             data={
-                "from": f"Threat Intel Platform <noreply@{domain}>",
+                "from": f"Mailgun Sandbox <postmaster@{domain}>",
                 "to": [to_email],
-                "subject": "Password Reset Request",
-                "html": (
-                    "<p>You requested a password reset for your Threat Intel "
-                    f"Platform account.</p>"
-                    f'<p><a href="{reset_url}">Reset your password</a></p>'
-                    "<p>If you did not request this, you can safely ignore this "
-                    "email.</p>"
-                ),
+                "subject": "Password Reset",
+                "text": reset_url,
             },
-            timeout=15,
+            timeout=10,
         )
         resp.raise_for_status()
         logger.info("Password reset email sent to %s", to_email)
         return True
+    except http_requests.exceptions.RequestException as e:
+        body = e.response.text if getattr(e, "response", None) is not None else str(e)
+        logger.error("Mailgun API Error: %s", body)
+        return False
     except Exception as e:  # noqa: BLE001 - never crash the auth flow on email failure
         logger.error("Failed to send password reset email to %s: %s", to_email, e)
         return False
@@ -147,17 +146,22 @@ def reset_password():
             "auth.reset_password_confirm", token=token, _external=True
         )
 
-        if send_reset_email(email, reset_url):
-            flash(
-                "A password reset link has been sent to your email address.",
-                "info",
-            )
-        else:
-            flash(
-                "Failed to send password reset email. Please try again later.",
-                "error",
-            )
-        return render_template("reset_password.html")
+        def _bg_send():
+            try:
+                if not send_reset_email(email, reset_url):
+                    logger.error(
+                        "Background email failed for %s: Mailgun send returned False",
+                        email,
+                    )
+            except Exception as e:  # noqa: BLE001 - log and continue
+                logger.error("Background email failed: %s", e)
+
+        threading.Thread(target=_bg_send, daemon=True).start()
+        flash(
+            "If an account exists, a reset link has been sent to that address.",
+            "info",
+        )
+        return redirect(url_for("auth.login"))
 
     return render_template("reset_password.html")
 
