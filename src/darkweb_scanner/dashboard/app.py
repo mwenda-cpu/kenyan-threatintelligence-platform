@@ -230,6 +230,15 @@ def create_app() -> Flask:
     # Report uploads need a writable data dir; warn early if it is not.
     check_ke_reports_dir()
 
+    # Auto-ingest KE reports (.pdf/.txt in data/ke_reports/) into
+    # contextual_intel on startup. Runs in a daemon thread, wrapped in
+    # try/except, and never blocks app boot.
+    try:
+        from .scrapers.context_scraper import ingest_ke_reports_async
+        ingest_ke_reports_async(get_storage())
+    except Exception as _exc:  # noqa: BLE001 - auto-ingest is best-effort
+        logging.warning("KE auto-ingest skipped at startup: %s", _exc)
+
     @app.route("/")
     def root():
         if session.get("logged_in"):

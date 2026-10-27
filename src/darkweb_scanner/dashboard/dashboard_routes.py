@@ -4761,6 +4761,63 @@ def api_quick_scan_findings(session_id):
 # ── Kenya context API ────────────────────────────────────────────────────────
 
 
+# Comprehensive list of cyber-threat keywords extracted from reports.
+# Each keyword becomes its own series in the ATTACK TRENDS chart. A report
+# contributes 1 hit per keyword it mentions (de-duplicated per report).
+_ATTACK_TYPE_KEYWORDS = [
+    "ransomware", "phishing", "malware", "ddos", "breach", "fraud",
+    "intrusion", "vulnerability", "data leak", "data breach",
+    "mobile banking", "sim swap", "card fraud", "cyberattack",
+    "account takeover", "scam", "spyware", "trojan",
+]
+
+
+def _extract_attack_types(text: str) -> list:
+    """Return the threat keywords found in the given text (case-insensitive)."""
+    low = (text or "").lower()
+    found = []
+    for kw in _ATTACK_TYPE_KEYWORDS:
+        if kw in low:
+            found.append(kw)
+    return found
+
+
+def _report_month(row: dict) -> str | None:
+    """Return a ``YYYY-MM`` month for a contextual_intel row.
+
+    Prefers a month parsed from the report's own title/summary (quarter+year,
+    ISO date, or standalone year); falls back to ``extracted_at`` only when no
+    date can be parsed from the report text.
+    """
+    import re as _re
+
+    text = " ".join([str(row.get("title") or ""), str(row.get("summary") or "")])
+
+    # Quarter + year, e.g. "Q1 2025" or "Q4 2024_25".
+    qm = _re.search(r"Q(?:uarter)?[\s\-]*([1-4])[\s\-/]*20(\d{2})", text, _re.IGNORECASE)
+    if qm:
+        q = int(qm.group(1))
+        y = 2000 + int(qm.group(2))
+        month = (q - 1) * 3 + 1
+        return f"{y:04d}-{month:02d}"
+
+    # ISO date or YYYY-MM.
+    m = _re.search(r"\b(19|20)\d{2}-\d{2}(?:-\d{2})?\b", text)
+    if m:
+        return m.group(0)[:7]
+
+    # Standalone year.
+    ym = _re.search(r"\b(20\d{2}|19\d{2})\b", text)
+    if ym:
+        return f"{ym.group(1)}-01"
+
+    ea = str(row.get("extracted_at") or "").strip()
+    if ea and len(ea) >= 7 and ea[4] == "-" and ea[:4].isdigit():
+        return ea[:7]
+
+    return None
+
+
 def _ke_ctx():
     from ..ke_context import KenyaContext
 
@@ -4809,7 +4866,42 @@ def api_ke_context_ca_advisories():
 @dashboard_bp.route("/api/ke-context/cbk-trends")
 @require_login
 def api_ke_context_cbk_trends():
-    return _ke_ok(_ke_ctx().get_cbk_fraud_trends())
+    """Attack trends derived from ``contextual_intel`` rows.
+
+    Scans only the DB ``title``/``summary`` fields (fast - no PDF reads),
+    counts each report once per threat keyword it mentions, pads series arrays
+    with 0 for missing months, and returns the top 5 keywords ordered by total
+    frequency: ``{"periods": [...], "series": {"<keyword>": [...]}}``.
+    """
+    from collections import defaultdict
+
+    storage = get_storage()
+    rows = storage.get_contextual_intel(limit=10000) or []
+
+    monthly = defaultdict(lambda: defaultdict(int))  # month -> {kw: count}
+    totals = defaultdict(int)  # kw -> total count
+    months = set()
+    for r in rows:
+        month = _report_month(r)
+        if not month:
+            continue
+        months.add(month)
+        text = " ".join([str(r.get("title") or ""), str(r.get("summary") or "")])
+        seen = set()
+        for kw in _extract_attack_types(text):
+            if kw in seen:
+                continue
+            seen.add(kw)
+            monthly[month][kw] += 1
+            totals[kw] += 1
+
+    if not months:
+        return _ke_ok({"periods": [], "series": {}})
+
+    periods = sorted(months)
+    top5 = sorted(totals, key=lambda a: (-totals[a], a))[:5]
+    series = {at: [monthly[m].get(at, 0) for m in periods] for at in top5}
+    return _ke_ok({"periods": periods, "series": series})
 
 
 @dashboard_bp.route("/api/ke-context/ke-cirt")
@@ -4824,10 +4916,111 @@ def api_ke_context_ke_cirt():
 @dashboard_bp.route("/api/ke-context/correlate")
 @require_login
 def api_ke_context_correlate():
+    """Unified case-insensitive keyword correlation across contextual_intel,
+    cves, threat_iocs and paste_hits.
+
+    Returns a unified list ``[{source,title,snippet,url}]`` capped at 50, with
+    priority: contextual_intel > cve > ioc > paste.
+    """
     keyword = (request.args.get("keyword") or "").strip()
     if not keyword:
         return jsonify({"ok": False, "error": "keyword required"}), 400
-    return _ke_ok(_ke_ctx().correlate_keyword(keyword))
+    kw = keyword.lower()
+    storage = get_storage()
+
+    def _match(text: str) -> bool:
+        return kw in str(text or "").lower()
+
+    results = []
+
+    # 1) contextual_intel (highest priority)
+    try:
+        for r in (storage.get_contextual_intel(limit=10000) or []):
+            blob = " ".join([str(r.get("title") or ""), str(r.get("summary") or ""), str(r.get("source") or "")])
+            if _match(blob):
+                results.append({
+                    "source": "contextual_intel",
+                    "title": r.get("title") or "Untitled",
+                    "snippet": (r.get("summary") or "")[:220],
+                    "url": r.get("url") or None,
+                })
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("correlate contextual_intel failed: %s", exc)
+
+    # 2) cve
+    try:
+        for r in (storage.get_cves(limit=1000) or []):
+            blob = " ".join([str(r.get("cve_id") or ""), str(r.get("description") or "")])
+            if _match(blob):
+                results.append({
+                    "source": "cve",
+                    "title": r.get("cve_id") or "CVE",
+                    "snippet": (r.get("description") or "")[:220],
+                    "url": None,
+                })
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("correlate cve failed: %s", exc)
+
+    # 3) threat_iocs (ioc.value == indicator)
+    try:
+        for r in (storage.get_threat_iocs(limit=1000) or []):
+            blob = " ".join([str(r.get("indicator") or ""), str(r.get("threat_type") or ""), str(r.get("type") or "")])
+            if _match(blob):
+                results.append({
+                    "source": "ioc",
+                    "title": r.get("indicator") or "IOC",
+                    "snippet": (r.get("threat_type") or r.get("type") or "")[:220],
+                    "url": None,
+                })
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("correlate ioc failed: %s", exc)
+
+    # 4) paste_hits (lowest priority)
+    try:
+        for r in (storage.get_paste_hits() or []):
+            blob = " ".join([str(r.get("matched_value") or ""), str(r.get("context") or ""), str(r.get("url") or "")])
+            if _match(blob):
+                results.append({
+                    "source": "paste",
+                    "title": r.get("matched_value") or "Paste hit",
+                    "snippet": (r.get("context") or "")[:220],
+                    "url": r.get("url") or None,
+                })
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("correlate paste_hits failed: %s", exc)
+
+    # De-duplicate by (source, title) keeping first occurrence (priority order).
+    seen = set()
+    deduped = []
+    for item in results:
+        key = (item["source"], item["title"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+
+    return _ke_ok(deduped[:50])
+
+
+@dashboard_bp.route("/api/ke-context/refresh", methods=["GET", "POST"])
+@require_login
+def api_ke_context_refresh():
+    """Re-ingest KE reports into contextual_intel, then return advisory+CBK results."""
+    try:
+        from ..scrapers.context_scraper import ingest_ke_reports
+        ingest_ke_reports(get_storage())
+    except Exception as exc:  # noqa: BLE001 - never fail refresh on ingest error
+        logger.warning("ke-context refresh ingest failed: %s", exc)
+    ctx = _ke_ctx()
+    cbk = ctx.get_latest_cbk_totals()
+    if cbk and cbk.get("period"):
+        cbk["file_url"] = _ke_cbk_file_url(cbk["period"])
+    return _ke_ok(
+        {
+            "ca_advisory_count": ctx.count_ca_advisories(),
+            "cbk_latest": cbk,
+        }
+    )
 
 
 # ── Health ─────────────────────────────────────────────────────────────────────

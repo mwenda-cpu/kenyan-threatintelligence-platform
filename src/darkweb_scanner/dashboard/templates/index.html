@@ -1666,10 +1666,10 @@
         <div style="margin-top:6px;color:var(--muted);font-size:.72rem">PDFs are stored in the reports folder and parsed straight away &mdash; the tables below refresh automatically. Admin role required.</div>
       </div>
     </div>
-    <!-- Section 3: CBK fraud trend chart -->
+    <!-- Section 3: Attack trend chart -->
     <div class="hd-card" style="margin-bottom:14px">
-      <div class="hd-card-hdr"><div class="hd-card-title">CBK Fraud Trends</div></div>
-      <div class="hd-card-body" id="keCbkChart"><div style="color:var(--muted);font-size:.78rem">Loading trends...</div></div>
+      <div class="hd-card-hdr"><div class="hd-card-title">Attack Trends</div></div>
+      <div class="hd-card-body" id="keCbkChart"><canvas id="atkTrendsChart" style="width:100%;max-height:210px;display:block"></canvas></div>
     </div>
     <!-- Section 4: Correlation input -->
     <div class="hd-card">
@@ -1680,6 +1680,7 @@
           <button class="btn btn-primary" onclick="keCorrelate()">Correlate</button>
         </div>
         <div id="keCorrOut" style="color:var(--muted);font-size:.8rem">Enter a keyword to match it against KE-CIRT attack types, CA threat types and CBK fraud categories.</div>
+        <div id="correlate-results" style="margin-top:10px"></div>
       </div>
     </div>
   </div>
@@ -6621,6 +6622,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 (function () {
+  let atkChart = null;
   console.log('[fix] tab loader active');
 
   const LOADERS = {
@@ -6689,12 +6691,17 @@
     const cbkChartEl = document.getElementById('keCbkChart');
     const esc = s => { const d = document.createElement('div'); d.textContent = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; };
     try {
+      const keFetch = (url) => fetch(url, { signal: AbortSignal.timeout(1000) }).then(r => r.json()).catch(() => ({ ok: false, error: 'timeout or network error' }));
       const [summaryRes, caRes, trendsRes] = await Promise.all([
-        fetch('/api/ke-context/summary').then(r => r.json()),
-        fetch('/api/ke-context/ca-advisories?limit=20').then(r => r.json()),
-        fetch('/api/ke-context/cbk-trends').then(r => r.json())
+        keFetch('/api/ke-context/summary'),
+        keFetch('/api/ke-context/ca-advisories?limit=20'),
+        keFetch('/api/ke-context/cbk-trends')
       ]);
       const summary = summaryRes && summaryRes.data ? summaryRes.data : {};
+      if (summaryRes && summaryRes.ok === false) {
+        if (cirtEl) cirtEl.innerHTML = '<div style="color:var(--red);font-size:.8rem">Failed to load Kenya context (timeout or error).</div>';
+        return;
+      }
       const cirt = summary.ke_cirt_latest || {};
       const cirtTitle = cirt.file_url
         ? `<a href="${esc(cirt.file_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent,#58a6ff);text-decoration:none">${esc(cirt.title)}</a>`
@@ -6728,72 +6735,110 @@
           + '</tbody></table>'
         : '<div style="color:var(--muted);font-size:.78rem">No CA advisories loaded yet.</div>';
       const trends = (trendsRes && trendsRes.data) || {};
-      const periods = trends.periods || [];
-      const hasCbkStats = periods.some(p => p.stats && Object.keys(p.stats).length > 0);
-      if (!periods.length || !hasCbkStats) {
+      const atkPeriods = trends.periods || [];
+      const atkSeries = trends.series || {};
+      if (!atkPeriods.length || !Object.keys(atkSeries).length) {
         cbkChartEl.innerHTML = '<div class="empty" style="padding:24px">'
-          + 'No CBK fraud statistics loaded yet.<br>'
-          + 'Add sidecar .txt files to data/ke_reports/ with:<br>'
-          + '-- CBK -- / period: YYYY / stats: mobile_banking=N, card=N, online=N, cyber=N'
+          + 'No attack trends available yet — ingest reports via Upload or Refresh.'
           + '</div>';
       } else {
-        const cats = (trends.categories || []).slice(0, 4);
-        const maxV = Math.max(1, ...periods.flatMap(p => cats.map(c => Number((p.stats || {})[c]) || 0)));
-        const W = 560, H = 180, pad = 30;
-        const stepX = periods.length > 1 ? (W - pad * 2) / (periods.length - 1) : 0;
-        const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149'];
-        let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;background:var(--bg);border:1px solid var(--border);border-radius:6px">`;
-        cats.forEach((c, ci) => {
-          const pts = periods.map((p, i) => {
-            const v = Number((p.stats || {})[c]) || 0;
-            const x = pad + i * stepX;
-            const y = H - pad - (v / maxV) * (H - pad * 2);
-            return `${x.toFixed(1)},${y.toFixed(1)}`;
-          }).join(' ');
-          svg += `<polyline points="${pts}" fill="none" stroke="${colors[ci % colors.length]}" stroke-width="2"/>`;
-        });
-        svg += `<text x="${pad}" y="${H - 8}" fill="var(--muted)" font-size="10">${esc(periods[0].period || '')}</text>`;
-        if (periods.length > 1) svg += `<text x="${W - pad - 40}" y="${H - 8}" fill="var(--muted)" font-size="10">${esc(periods[periods.length - 1].period || '')}</text>`;
-        svg += '</svg>';
-        svg += `<div style="color:var(--muted);font-size:.72rem;margin-top:4px">${cats.map((c, i) => `<span style="color:${colors[i % colors.length]}">${esc(c)}</span>`).join(' · ')}</div>`;
-        cbkChartEl.innerHTML = svg;
+        const atkCanvas = cbkChartEl.querySelector('canvas#atkTrendsChart');
+        atkCanvas.dataset.atkLabels = JSON.stringify(atkPeriods);
+        renderAtkChart(atkSeries);
       }
     } catch (e) {
       console.error('[ke-context]', e);
       if (cirtEl) cirtEl.innerHTML = '<div style="color:var(--red);font-size:.8rem">Failed to load Kenya context.</div>';
     }
   }
+
+  function renderAtkChart(atkSeries) {
+    const atkCanvas = document.getElementById('atkTrendsChart');
+    if (!atkCanvas || !window.Chart) return;
+    if (atkChart) { atkChart.destroy(); }
+    const atkCtx = atkCanvas.getContext('2d');
+    const atkLabels = JSON.parse(atkCanvas.dataset.atkLabels || '[]');
+    const atkColors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff'];
+    const atkKeys = Object.keys(atkSeries);
+    const atkDatasets = atkKeys.map((name, i) => ({
+      label: name,
+      data: (Array.isArray(atkSeries[name]) ? atkSeries[name] : []).map(Number),
+      borderColor: atkColors[i % atkColors.length],
+      backgroundColor: 'transparent',
+      tension: 0.3,
+      pointRadius: 3,
+      fill: false,
+    }));
+    atkChart = new window.Chart(atkCtx, {
+      type: 'line',
+      data: { labels: atkLabels, datasets: atkDatasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { color: '#8b949e', font: { size: 11 } } }, title: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#30363d' } },
+          y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: '#30363d' }, beginAtZero: true },
+        },
+        animation: { duration: 400 },
+      },
+    });
+  }
+  window.renderAtkChart = renderAtkChart;
   window.loadKenyaContext = loadKenyaContext;
 
   async function keCorrelate() {
     const input = document.getElementById('keCorrInput');
     const out = document.getElementById('keCorrOut');
+    const corrResults = document.getElementById('correlate-results');
     const kw = (input && input.value || '').trim();
     if (!kw) { out.innerHTML = 'Enter a keyword first.'; return; }
     out.innerHTML = 'Correlating...';
+    if (corrResults) corrResults.innerHTML = '';
     try {
-      const res = await (await fetch('/api/ke-context/correlate?keyword=' + encodeURIComponent(kw))).json();
-      const data = res.data || {};
-      const esc2 = s => { const d = document.createElement('div'); d.textContent = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; };
-      const cirtHits = data.ke_cirt || [];
-      const caHits = data.ca_advisories || [];
-      const cbkHits = data.cbk_stats || [];
-      if (!cirtHits.length && !caHits.length && !cbkHits.length) {
-        out.innerHTML = `No matches for "${esc2(kw)}". Try: ransomware, phishing, malware, fraud, ddos, breach.`;
+      const res = await (await fetch('/api/ke-context/correlate?keyword=' + encodeURIComponent(kw), { signal: AbortSignal.timeout(1000) })).json().catch(() => ({ ok: false, error: 'timeout' }));
+      const corrItems = Array.isArray(res.data) ? res.data : [];
+      const corrEsc = s => { const d = document.createElement('div'); d.textContent = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; };
+      if (!corrItems.length) {
+        out.innerHTML = `No matches for "${corrEsc(kw)}".`;
+        renderCorrelateResults([]);
         return;
       }
-      const sec = (title, items, fmt) => `<div style="margin-top:8px"><div style="font-weight:700;font-size:.8rem;margin-bottom:4px">${title} (${items.length})</div>`
-        + (items.length ? items.slice(0, 5).map(fmt).join('') : '<div style="color:var(--muted)">No matches.</div>') + '</div>';
-      out.innerHTML =
-        sec('KE-CIRT/CC', cirtHits, r => `<div style="font-size:.8rem;padding:3px 0">• ${esc2(r.title)} <span style="color:var(--muted)">(${(r.matched_attack_types || []).join(', ')})</span></div>`)
-        + sec('CA advisories', caHits, r => `<div style="font-size:.8rem;padding:3px 0">• ${esc2(r.title)} <span style="color:var(--muted)">[${esc2(r.threat_type)}]</span></div>`)
-        + sec('CBK snapshots', cbkHits, r => `<div style="font-size:.8rem;padding:3px 0">• ${esc2(r.period)} <span style="color:var(--muted)">(${(r.matched_categories || []).join(', ')})</span></div>`);
+      out.innerHTML = `${corrItems.length} match${corrItems.length !== 1 ? 'es' : ''} for "${corrEsc(kw)}"`;
+      renderCorrelateResults(corrItems);
     } catch (e) {
       console.error('[ke-context correlate]', e);
       out.innerHTML = 'Correlation failed.';
+      if (corrResults) corrResults.innerHTML = '<div style="color:var(--red);font-size:.8rem">Correlation failed.</div>';
     }
   }
   window.keCorrelate = keCorrelate;
+
+  function renderCorrelateResults(corrItems) {
+    const corrResults = document.getElementById('correlate-results');
+    if (!corrResults) return;
+    const corrEsc = s => { const d = document.createElement('div'); d.textContent = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; };
+    const corrSourceLabel = { 'contextual_intel': 'Contextual Intel', cve: 'CVE', ioc: 'IOC', paste: 'Paste' };
+    if (!corrItems.length) {
+      corrResults.innerHTML = '<div style="color:var(--muted);font-size:.8rem">No matches.</div>';
+      return;
+    }
+    corrResults.innerHTML = corrItems.map(r => {
+      const src = corrSourceLabel[r.source] || r.source;
+      const url = r.url
+        ? `<a href="${corrEsc(r.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent,#58a6ff);text-decoration:none;word-break:break-all">${corrEsc(r.url)}</a>`
+        : '<span style="color:var(--muted)">—</span>';
+      return `<div style="border-bottom:1px solid var(--border);padding:6px 0;font-size:.82rem">`
+        + `<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:2px">`
+        + `<span style="font-weight:700">${corrEsc(r.title)}</span>`
+        + `<span style="font-size:.7rem;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:1px 6px">${corrEsc(src)}</span>`
+        + `</div>`
+        + `<div style="color:var(--muted)">${corrEsc(r.snippet || '')}</div>`
+        + `<div style="margin-top:3px;font-size:.72rem;color:var(--muted)">Source: ${url}</div>`
+        + `</div>`;
+    }).join('');
+  }
+  window.renderCorrelateResults = renderCorrelateResults;
 
   async function uploadKeReport() {
     const input = document.getElementById('keReportFile');
