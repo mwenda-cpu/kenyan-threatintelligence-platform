@@ -10,11 +10,11 @@ A self-hosted, open-source threat intelligence platform built for the Kenyan Gov
 
 - **Dark Web Crawler** — async Tor-based crawler for .onion sites, configurable keyword monitoring, real-time webhook and email alerts
 - **Quick Scan** — on-demand OSINT sweep of any domain, IP, URL, or company name across configured sources, with live progress and cancellation
-- **Intelligence Dashboard** — start page with live threat level, ransomware victim feed, group rankings, SEA country breakdown, ThreatFox IOC mini-feed, and press headlines
+- **Intelligence Dashboard** — start page with live threat level, ransomware victim feed, group rankings, Kenya country breakdown, ThreatFox IOC mini-feed, and press headlines
 - **ransomware.live PRO Integration** — 324+ tracked groups, 26 000+ victims, IOCs, negotiation chats, ransom notes, YARA rules, SEC 8-K filings, CSIRT directory
 - **IOC Feed** — live indicators of compromise from ThreatFox, URLhaus, and Feodo Tracker with search, type filtering, and confidence scoring
-- **Ransomware Tracker** — live tracking with SEA/PH regional focus, victim counts, and SEA-targeting flags
-- **Threat Actor Profiles** — structured APT and cybercriminal profiles relevant to Southeast Asia
+- **Ransomware Tracker** — live tracking with Kenya regional focus, victim counts, and Kenya-targeting flags
+- **Threat Actor Profiles** — structured APT and cybercriminal profiles relevant to Kenya
 - **DNS Investigations** — passive + active DNS recon, subdomain brute-force (50 workers), TCP port scan (30 ports), HTTP directory enumeration, crt.sh certificate transparency, zone transfer attempts, SPF/DMARC/DKIM scoring, interactive subdomain graph, PDF export with world map
 - **IP Investigation** — parallel AbuseIPDB + VirusTotal lookups with geolocation, ASN, and history
 - **WhatsMyName Username Check** — checks a username across 200+ sites concurrently
@@ -72,7 +72,7 @@ N+1 queries on the ransomware groups and threat actors endpoints have been colla
 ### Quick deploy
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/osintph/threatintel-platform/main/deploy.sh \
+curl -fsSL https://raw.githubusercontent.com/mwenda-cpu/kenyan-threatintelligence-platform/main/deploy.sh \
   -o /tmp/deploy.sh && sudo bash /tmp/deploy.sh
 ```
 
@@ -145,7 +145,7 @@ All configuration lives in `.env`. **Never commit this file.**
 |----------|-------------|
 | `MAILGUN_API_KEY` | Mailgun API key |
 | `MAILGUN_DOMAIN` | Your Mailgun sending domain |
-| `MAILGUN_FROM` | Sender address (default: `OSINT PH Threat Intel <digest@intel.osintph.info>`) |
+| `MAILGUN_FROM` | Sender address (default: `Kenya Threat Intel <digest@intel.kenya-threat-intel.local>`) |
 
 ### Telegram
 
@@ -199,7 +199,7 @@ Current count: **135 passed, 2 skipped**. Tests cover:
 ## Development Setup
 
 ```bash
-git clone https://github.com/osintph/threatintel-platform
+git clone https://github.com/mwenda-cpu/kenyan-threatintelligence-platform
 cd threatintel-platform
 python -m venv .venv
 source .venv/bin/activate
@@ -294,8 +294,6 @@ See the [LICENSE](LICENSE) file for the full text.
 
 ## Contributing
 
-Pull requests are welcome. If you're a Philippine or Southeast Asian security researcher and want to collaborate on keyword lists, threat actor data, or regional intelligence coverage — please reach out.
 
-Issues and feature requests: https://github.com/osintph/threatintel-platform/issues
+Issues and feature requests: https://github.com/mwenda-cpu/kenyan-threatintelligence-platform/issues
 
-OSINT PH: https://www.osintph.info
