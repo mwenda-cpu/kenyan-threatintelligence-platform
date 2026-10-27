@@ -1726,7 +1726,7 @@
       </div>
       <div class="panel-body">
         <p style="color:var(--muted);font-size:.82rem;margin-bottom:14px">
-          Sends the daily threat intelligence digest PDF to all subscribers via Mailgun (intel.osintph.info).
+           Sends the daily threat intelligence digest PDF to all subscribers via Mailgun (intel.kenya-threat-intel.local).
         </p>
         <div class="form-row" style="margin-bottom:14px">
           <input type="email" id="newSubscriberEmail" placeholder="subscriber@example.com" style="flex:1;padding:7px 12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:5px;font-family:var(--mono);font-size:.82rem"/>
@@ -6666,6 +6666,19 @@
 
     const clicked = document.querySelector(`[data-tab="${name}"]`);
     if (clicked) clicked.classList.add('active');
+
+    // Explicit handling for Settings tab to avoid empty render
+    if (name === 'settings') {
+      const sp = document.getElementById('panel-settings');
+      if (sp) {
+        sp.classList.add('active');
+        sp.style.display = 'block';
+      }
+      document.querySelectorAll('.tab-panel').forEach(p => { if (p.id !== 'panel-settings') p.style.display = 'none'; });
+      const fn = 'loadSettings';
+      if (typeof window[fn] === 'function') { try { window[fn](); } catch (e) { console.error('[fix]', fn, e); } }
+      return;
+    }
 
     const panelId = ALIAS[name] || ('panel-' + name);
     let panel = document.getElementById(panelId) || document.getElementById('panel-' + name.replace(/-/g, ''));
