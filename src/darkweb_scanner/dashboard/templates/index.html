@@ -619,37 +619,37 @@
   <a href="#" class="nav-item active" data-tab="dashboard">Dashboard</a>
 
   <div class="nav-dropdown">
-    <button class="nav-item" data-tab="threat-actors" onclick="switchTab('threat-actors', event)">Intelligence <span class="caret">▾</span></button>
+    <button class="nav-item" data-tab="ransomware" onclick="switchTab('ransomware', event)">Intelligence <span class="caret">▾</span></button>
     <div class="nav-dropdown-menu">
       <a href="#" data-tab="ransomware"> Ransomware</a>
       <a href="#" data-tab="ke-context"> Kenya Context</a>
-      <a href="#" data-tab="threat-actors">ACTOR Threat Actors</a>
       <a href="#" data-tab="ioc-feed"> IOC Feed</a>
-      <a href="#" data-tab="ip-lookup"> IP Lookup</a>
-      <a href="#" data-tab="paste-monitor">PST Paste Monitor</a>
-      <a href="#" data-tab="breach-directory">DIR Breach Directory</a>
-      <a class="dropdown-item" href="{{ url_for('dashboard.cve_panel') }}">CVE Panel</a>
     </div>
   </div>
 
   <div class="nav-dropdown">
-   <button class="nav-item" data-tab="dns" onclick="switchTab('dns', event)">Investigations <span class="caret">▾</span></button>
+    <button class="nav-item" data-tab="dns" onclick="switchTab('dns', event)">Investigations <span class="caret">▾</span></button>
     <div class="nav-dropdown-menu">
       <a href="#" data-tab="dns"> DNS</a>
       <a href="#" data-tab="quick-scan"> Quick Scan</a>
 
       <a href="#" data-tab="projects"> Projects</a>
+      <a href="#" data-tab="ip-lookup"> IP Lookup</a>
+      <a class="dropdown-item" href="{{ url_for('dashboard.cve_panel') }}">CVE Panel</a>
     </div>
   </div>
 
   <div class="nav-dropdown">
-   <button class="nav-item" data-tab="osint-toolkit" onclick="switchTab('osint-toolkit', event)">OSINT <span class="caret">▾</span></button>
+    <button class="nav-item" data-tab="osint-toolkit" onclick="switchTab('osint-toolkit', event)">OSINT <span class="caret">▾</span></button>
     <div class="nav-dropdown-menu">
       <a href="#" data-tab="osint-toolkit">TOOL OSINT Toolkit</a>
       <a href="#" data-tab="channel-monitor">TG Channel Monitor</a>
       <a href="#" data-tab="crawls">CRWL Crawls</a>
       <a href="#" data-tab="keywords">KEY Keywords</a>
       <a href="#" data-tab="seeds"> Seeds</a>
+      <a href="#" data-tab="paste-monitor">PST Paste Monitor</a>
+      <a href="#" data-tab="breach-directory">DIR Breach Directory</a>
+      <a href="#" data-tab="threat-actors"> Threat Actors</a>
     </div>
   </div>
 
