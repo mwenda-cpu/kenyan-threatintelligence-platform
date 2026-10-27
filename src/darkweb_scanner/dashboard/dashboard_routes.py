@@ -1189,7 +1189,6 @@ def api_report_pdf():
         from datetime import datetime as dt
         from flask import Response, jsonify
 
-        from .storage_helper import get_storage
         from ..ke_context import KenyaContext
         from ..snippets import is_actionable_hit
         from .pdf_generator.main import build_report
@@ -1288,7 +1287,7 @@ def api_report_pdf():
         import uuid
         error_id = uuid.uuid4().hex
         logger.error("api_report_pdf error [%s]: %s", error_id, traceback.format_exc())
-        return jsonify({"error": str(e) or "PDF generation failed.", "error_id": error_id}), 500
+        return jsonify({"error": "PDF generation failed.", "error_id": error_id}), 500
 
 
 # ── KE Reports: download & upload ────────────────────────────────────────────
@@ -2012,22 +2011,7 @@ def api_threat_actors():
         return terms
 
     actor_terms = [(a, _actor_match_terms(a)) for a in all_actors]
-    hit_count_by_slug = {a["slug"]: 0 for a in all_actors}
-    for ph in paste_hits:
-        gn = (ph.get("group_name") or "").strip().lower()
-        ctx = (ph.get("context") or "").lower()
-        mv = (ph.get("matched_value") or "").lower()
-        for actor, terms in actor_terms:
-            # COUNT(DISTINCT paste_hits.id) per actor: a paste hit counts at most
-            # once per actor. Match group_name exactly, or name/alias/keyword as
-            # a substring of context or matched_value (case-insensitive).
-            if gn and gn in terms:
-                hit_count_by_slug[actor["slug"]] += 1
-                continue
-            for term in terms:
-                if term and (term in ctx or term in mv):
-                    hit_count_by_slug[actor["slug"]] += 1
-                    break
+    hit_count_by_slug = {a["slug"]: sum(len(hits_by_kw.get(kw, [])) for kw in a.get("keywords", [])) for a in all_actors}
 
     enriched = []
     for actor in all_actors:

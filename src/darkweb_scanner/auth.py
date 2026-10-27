@@ -44,25 +44,15 @@ def require_login(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not is_authenticated():
-            return redirect(url_for("auth.login"))
-        # Handle stale sessions (e.g. after a DB reset) gracefully.
-        try:
-            from .dashboard.storage_helper import get_storage
-
-            user = get_storage().get_user_by_id(session.get("user_id"))
-        except Exception:
-            user = None
-        if not user:
-            session.clear()
-            return redirect(url_for("auth.login"))
+            return redirect("/login")
         # Block access until password change is done
         if session.get("must_change_password"):
-            return redirect(url_for("auth.force_change_password"))
+            return redirect("/force-change-password")
         # Block access until MFA is set up (only enforce for non-setup routes)
         if session.get("must_setup_mfa") and request.endpoint not in (
             "auth.totp_setup", "auth.logout"
         ):
-            return redirect(url_for("auth.totp_setup"))
+            return redirect("/totp/setup")
         return f(*args, **kwargs)
 
     return decorated
