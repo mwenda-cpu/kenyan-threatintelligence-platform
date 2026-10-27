@@ -190,7 +190,7 @@ def ingest_nvd(storage: Storage, results_per_page: int = 100) -> dict:
 
     # NVD 2.0 API response format
     vulnerabilities = data.get("vulnerabilities", []) or []
-    total = data.get("totalResults", 0)
+    data.get("totalResults", 0)
 
     for vuln in vulnerabilities:
         cve_meta = vuln.get("cve", {})

@@ -3,15 +3,10 @@ Section 05 — Strategic Guidance.
 Per-audience checklists + Start/Continue/Stop panels.
 """
 
-from reportlab.platypus import Spacer, Paragraph, PageBreak
+from reportlab.platypus import PageBreak, Spacer
 
-from ..components import pull_quote, start_continue_stop, checklist_box, section_divider
-from ..styles.colors import (
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_LABEL, ACCENT_BLUE, ACCENT_PURPLE,
-    BG_SECONDARY,
-)
-from ..styles.typography import body_style, heading_style, SIZE_H1
-from ..styles.layout import CONTENT_W, SECTIONS
+from ..components import checklist_box, pull_quote, section_divider, start_continue_stop
+from ..styles.layout import SECTIONS
 
 
 def strategic_guidance_flowables(data: dict) -> list:

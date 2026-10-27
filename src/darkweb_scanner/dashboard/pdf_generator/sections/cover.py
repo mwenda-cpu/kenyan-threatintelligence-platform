@@ -4,27 +4,41 @@ Cover page section — full-bleed dark navy, Hoxhunt-styled.
 
 from __future__ import annotations
 
-from io import BytesIO
-from datetime import datetime, timezone
-
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    Flowable, Spacer, Paragraph, Image, PageBreak, Table, TableStyle,
+    Flowable,
+    PageBreak,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
 )
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.styles import ParagraphStyle
 
 from ..styles.colors import (
-    BG_PRIMARY, BG_SECONDARY, ACCENT_BLUE, ACCENT_PURPLE, ACCENT_PINK,
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_LABEL, KE_RED, KE_GREEN, KE_BLACK,
+    ACCENT_BLUE,
+    ACCENT_PURPLE,
+    BG_PRIMARY,
+    BG_SECONDARY,
+    KE_BLACK,
+    KE_GREEN,
+    KE_RED,
+    TEXT_LABEL,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
 )
-from ..styles.typography import body_style, heading_style
 from ..styles.layout import (
-    CONTENT_W, CONTENT_H, MARGIN, PAGE_W, PAGE_H,
-    REPORT_TITLE, REPORT_SUBTITLE, REPORT_EDITION, REPORT_BRAND,
+    CONTENT_W,
+    PAGE_H,
+    PAGE_W,
+    REPORT_BRAND,
+    REPORT_EDITION,
+    REPORT_SUBTITLE,
+    REPORT_TITLE,
 )
-from ..components import section_divider
+from ..styles.typography import body_style
 
 
 class FullBleedCover(Flowable):
@@ -127,14 +141,14 @@ def cover_flowables(stats: dict, logo_path: str | None = None) -> list:
 
     # Tagline
     story.append(Paragraph(
-        f"<font color='#F0A6FF'><b>Kenya-focused threat intelligence from dark-web monitoring.</b></font>",
+        "<font color='#F0A6FF'><b>Kenya-focused threat intelligence from dark-web monitoring.</b></font>",
         body_style(align="left", fontSize=10.5, leading=16, textColor="#F0A6FF"),
     ))
     story.append(Spacer(1, 14))
 
     story.append(Paragraph(
-        f"<font color='#7B8DB5'>Data sources: KE-CIRT/CC, Communications Authority of Kenya, "
-        f"Central Bank of Kenya, Tor network dark-web crawl sessions.</font>",
+        "<font color='#7B8DB5'>Data sources: KE-CIRT/CC, Communications Authority of Kenya, "
+        "Central Bank of Kenya, Tor network dark-web crawl sessions.</font>",
         body_style(align="left", fontSize=8.5, leading=12, textColor=TEXT_LABEL),
     ))
 

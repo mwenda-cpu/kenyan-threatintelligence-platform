@@ -12,10 +12,7 @@ Fallback chain:
 
 from __future__ import annotations
 
-import ipaddress
-import json
 import logging
-import os
 import socket
 import threading
 import uuid

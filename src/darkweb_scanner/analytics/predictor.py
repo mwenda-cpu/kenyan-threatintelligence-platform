@@ -12,10 +12,8 @@ import hashlib
 import logging
 import random
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import numpy as np
-import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 logger = logging.getLogger(__name__)

@@ -3,16 +3,17 @@ Section 01 — Executive Summary & Introduction.
 3 key developments + narrative + data source note.
 """
 
-from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_LEFT
-from reportlab.platypus import Spacer, Paragraph, PageBreak
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.platypus import PageBreak, Paragraph, Spacer
 
 from ..components import pull_quote, section_divider
 from ..styles.colors import (
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_LABEL, ACCENT_BLUE,
+    TEXT_LABEL,
+    TEXT_PRIMARY,
 )
-from ..styles.typography import body_style, heading_style
 from ..styles.layout import SECTIONS
+from ..styles.typography import body_style, heading_style
 
 
 def exec_summary_flowables(data: dict) -> list:

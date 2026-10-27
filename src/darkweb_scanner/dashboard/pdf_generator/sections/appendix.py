@@ -3,14 +3,15 @@ Section 06 — Appendix & Sources.
 Source list, methodology, compliance note.
 """
 
-from reportlab.platypus import Spacer, Paragraph, PageBreak
+from reportlab.platypus import PageBreak, Paragraph, Spacer
 
-from ..components import pull_quote, styled_table, section_divider
+from ..components import pull_quote, section_divider, styled_table
 from ..styles.colors import (
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_LABEL, ACCENT_BLUE, BG_SECONDARY,
+    TEXT_LABEL,
+    TEXT_PRIMARY,
 )
-from ..styles.typography import body_style, heading_style, SIZE_H1
 from ..styles.layout import CONTENT_W, SECTIONS
+from ..styles.typography import body_style, heading_style
 
 
 def appendix_flowables(data: dict) -> list:

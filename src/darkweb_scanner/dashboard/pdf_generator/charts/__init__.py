@@ -11,15 +11,21 @@ import io
 from typing import List, Tuple
 
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+
+matplotlib.use("Agg")  # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.patches import FancyBboxPatch
 
 from ..styles.colors import (
-    ACCENT_BLUE, ACCENT_PURPLE, ACCENT_PINK, ACCENT_RED, ACCENT_GREEN,
-    TEXT_LABEL, TEXT_MUTED, BG_PRIMARY, BG_SECONDARY,
+    ACCENT_BLUE,
+    ACCENT_GREEN,
+    ACCENT_PINK,
+    ACCENT_PURPLE,
+    ACCENT_RED,
+    BG_PRIMARY,
+    BG_SECONDARY,
+    TEXT_LABEL,
+    TEXT_MUTED,
 )
 
 DPI = 300
@@ -48,7 +54,7 @@ def _style_axes(ax, hide_spines: bool = True):
 def _gradient_bar(ax, y_positions, widths, colors: List[str], height: float = 0.6):
     """Draw horizontal bars with a subtle two-tone gradient feel."""
     for y, w, c in zip(y_positions, widths, colors):
-        bar = ax.barh(y, w, height=height, color=c, edgecolor="none", alpha=0.92)
+        ax.barh(y, w, height=height, color=c, edgecolor="none", alpha=0.92)
         # value label at end of bar
         ax.text(w + max(widths) * 0.01, y, f"  {int(w)}", va="center",
                 ha="left", fontsize=10, color="#F0F4FF", fontweight="bold")
@@ -146,7 +152,7 @@ def donut_chart(
         plt.close(fig)
         buf.seek(0)
         return buf.read()
-    total = sum(values)
+    sum(values)
 
     wedges, _ = ax.pie(
         values,

@@ -3,18 +3,19 @@ Section 02 — Threat Landscape Overview.
 Keyword bar chart, category donut, analyst notes.
 """
 
-from reportlab.platypus import Spacer, Paragraph, PageBreak, Image
-from reportlab.lib.utils import ImageReader
 from io import BytesIO
 
-from ..components import pull_quote, styled_table, section_divider
+from reportlab.platypus import Image, PageBreak, Spacer
+
+from ..charts import donut_chart, gradient_horizontal_bar
+from ..components import pull_quote, section_divider
 from ..styles.colors import (
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_LABEL, ACCENT_BLUE, ACCENT_PURPLE,
-    ACCENT_PINK, ACCENT_RED, BG_SECONDARY,
+    ACCENT_BLUE,
+    ACCENT_PINK,
+    ACCENT_PURPLE,
+    ACCENT_RED,
 )
-from ..styles.typography import body_style, heading_style, SIZE_H1
 from ..styles.layout import CONTENT_W, SECTIONS
-from ..charts import gradient_horizontal_bar, donut_chart
 
 
 def threat_landscape_flowables(data: dict) -> list:

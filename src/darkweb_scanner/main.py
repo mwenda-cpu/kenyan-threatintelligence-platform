@@ -7,7 +7,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from urllib.parse import urljoin
 
 import click
 from bs4 import BeautifulSoup
@@ -205,40 +204,6 @@ def parse_victim_metadata(html: str, url: str, keyword: str) -> dict:
         "attack_date": attack_date,
         "raw_content": page_text[:2000] if page_text else None,
     }
-
-    soup = BeautifulSoup(html, "lxml")
-
-    # Strip global-noise containers: keyword here is just branding, not a victim page.
-    for tag in soup(["title", "header", "footer", "nav", "script", "style", "noscript"]):
-        tag.decompose()
-
-    keyword_lower = keyword.lower()
-
-    # Search text nodes for the keyword.
-    for text_node in soup.find_all(string=lambda t: t and keyword_lower in t.lower()):
-        parent = text_node.parent
-
-        # Walk up to find the closest <a> ancestor.
-        current = parent
-        while current is not None and current.name != "a":
-            current = current.parent
-
-        if current is not None:
-            href = current.get("href")
-            if href and not href.startswith(("#", "mailto:", "javascript:")):
-                absolute = urljoin(base_url, href.strip())
-                if absolute != base_url:
-                    return absolute
-
-        # Check nearby sibling <a> tags (the link might be a sibling, not an ancestor).
-        for sibling in parent.find_all_next("a", limit=5):
-            href = sibling.get("href")
-            if href and not href.startswith(("#", "mailto:", "javascript:")):
-                absolute = urljoin(base_url, href.strip())
-                if absolute != base_url:
-                    return absolute
-
-    return base_url
 
 async def run_scan(
     seeds: list[str],

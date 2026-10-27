@@ -661,6 +661,12 @@
       <a href="#" data-tab="settings"> Settings</a>
     </div>
   </div>
+  <div class="nav-dropdown">
+    <button class="nav-item" data-tab="exposure" onclick="switchTab('exposure', event)">Exposure <span class="caret">▾</span></button>
+    <div class="nav-dropdown-menu">
+      <a href="#" data-tab="exposure">EXP Exposure Intel</a>
+    </div>
+  </div>
 </nav>
   <div class="header-right">
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode"></button>
@@ -1916,6 +1922,19 @@
     </div>
   </div>
 
+  <div class="tab-panel" id="panel-exposure">
+    <div class="panel">
+      <div class="panel-header"><h2>Exposure Intelligence</h2></div>
+      <div class="panel-body">
+        <p style="color:var(--muted);font-size:.83rem;margin-bottom:12px">Search a domain (e.g. go.ke). API keys must be configured in .env (SHODAN_API_KEY, URLSCAN_API_KEY).</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input type="text" id="exposureQuery" placeholder="go.ke" style="flex:1"/>
+          <button class="btn btn-primary" onclick="loadExposure()">Search</button>
+        </div>
+        <div id="exposureResults"></div>
+      </div>
+    </div>
+  </div>
 </main>
 
 <div id="toast"></div>
@@ -3277,7 +3296,32 @@
       }
     } catch(e) { console.error('[loadSettings]', e); }
   }
-  window.loadSettings = loadSettings;
+  async function loadExposure() {
+    const q = document.getElementById('exposureQuery').value.trim() || 'go.ke';
+    const el = document.getElementById('exposureResults');
+    el.innerHTML = 'Loading...';
+    try {
+      const [sh, us] = await Promise.all([
+        fetch('/api/exposure/shodan?query=' + encodeURIComponent(q)).then(r=>r.json()),
+        fetch('/api/exposure/urlscan?query=' + encodeURIComponent(q)).then(r=>r.json()),
+      ]);
+      let html = '';
+      if (sh.results && sh.results.length) {
+        html += '<h3>Shodan</h3><table class="ioc-table"><thead><tr><th>IP</th><th>Port</th><th>Service</th></tr></thead><tbody>' +
+          sh.results.map(r=>`<tr><td>${esc(r.ip)}</td><td>${esc(r.port)}</td><td>${esc(r.service)}</td></tr>`).join('') + '</tbody></table>';
+      } else {
+        html += '<p style="color:var(--muted)">' + esc(sh.error || 'No Shodan results') + '</p>';
+      }
+      if (us.results && us.results.length) {
+        html += '<h3>URLScan</h3><table class="ioc-table"><thead><tr><th>URL</th><th>Screenshot</th><th>ASN</th></tr></thead><tbody>' +
+          us.results.map(r=>`<tr><td>${esc(r.url)}</td><td>${r.screenshot?`<a href="${esc(r.screenshot)}" target="_blank">img</a>`:''}</td><td>${esc(r.asn)}</td></tr>`).join('') + '</tbody></table>';
+      } else {
+        html += '<p style="color:var(--muted)">' + esc(us.error || 'No URLScan results') + '</p>';
+      }
+      el.innerHTML = html;
+    } catch(e) { el.innerHTML = '<p style="color:var(--red)">Error loading exposure data.</p>'; }
+  }
+  window.loadExposure = loadExposure;
 
   async function changePassword() {
     const body = { current_password: document.getElementById('currentPw').value, new_password: document.getElementById('newPw').value, confirm_password: document.getElementById('confirmPw').value };
@@ -6644,7 +6688,7 @@
     'paste-monitor':  'loadPasteHits',
     'breach-directory': 'loadBreachDirectory',
     'reports':        'loadReportPreview',
-    'settings':       'loadSettings',
+    'exposure':       'loadExposure',
     'channel-monitor':'cmInit',
     'dashboard':      'fetchStats',
     'crawls':         'fetchStats'

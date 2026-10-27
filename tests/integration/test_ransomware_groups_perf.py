@@ -14,8 +14,8 @@ import pytest
 from flask import Flask
 from sqlalchemy import event
 
-from darkweb_scanner.storage import Storage, KeywordHitRecord
 from darkweb_scanner.dashboard.storage_helper import close_db
+from darkweb_scanner.storage import KeywordHitRecord, Storage
 
 _TEST_DB_URL = "sqlite:///:memory:"
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
-from flask import Blueprint, Response, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, Response, jsonify, redirect, render_template, request, session
 
 from ..auth import hash_password, require_login, validate_password_strength
 from ..crawler import CrawlConfig, run_onion_crawl_cycle
@@ -411,7 +411,7 @@ def _load_paste_sources() -> list[str]:
 
 def _save_paste_sources(sources: list[str]):
     _ensure_data_dir()
-    _SOURCES_FILE.write_text("\n".join(sources) + "\n")
+    PASTE_SOURCES_FILE.write_text("\n".join(sources) + "\n")
 
 
 @dashboard_bp.route("/api/seeds/clearnet", methods=["GET"])
@@ -1030,7 +1030,24 @@ def api_telegram_channels_delete():
         return jsonify({"error": str(e)}), 500
 
 
-# ── Sessions API ───────────────────────────────────────────────────────────────
+@dashboard_bp.route("/api/exposure/shodan", methods=["GET"])
+@require_login
+def api_exposure_shodan():
+    from flask import jsonify, request
+
+    from ..exposure_intel import shodan_search
+    query = request.args.get("query", "")
+    return jsonify(shodan_search(query))
+
+
+@dashboard_bp.route("/api/exposure/urlscan", methods=["GET"])
+@require_login
+def api_exposure_urlscan():
+    from flask import jsonify, request
+
+    from ..exposure_intel import urlscan_search
+    query = request.args.get("query", "")
+    return jsonify(urlscan_search(query))
 
 
 @dashboard_bp.route("/api/sessions", methods=["GET"])
@@ -1050,7 +1067,9 @@ def api_sessions():
 @require_login
 def api_session_hits(session_id):
     import traceback
+
     from flask import jsonify
+
     from ..storage import MAX_HIT_CONTEXT_LEN
 
     try:
@@ -1080,7 +1099,9 @@ def api_session_hits(session_id):
 @require_login
 def api_hits_by_keyword():
     import traceback
+
     from flask import jsonify, request
+
     from ..storage import MAX_HIT_CONTEXT_LEN
 
     keyword = request.args.get("keyword", "").strip()
@@ -1121,9 +1142,10 @@ def api_analytics_predict():
     sparse data (1-2 months) and a simulated baseline when there is zero data.
     """
     import traceback
-    from flask import jsonify, request
 
+    from flask import jsonify, request
     from sqlalchemy import func
+
     from .storage_helper import get_storage
 
     keyword = request.args.get("keyword", "").strip()
@@ -1154,7 +1176,7 @@ def api_analytics_predict():
                     "simulated": False,
                 })
 
-        from ..analytics.predictor import predict_for_keyword, generate_simulated_baseline
+        from ..analytics.predictor import generate_simulated_baseline, predict_for_keyword
         result = predict_for_keyword(keyword, monthly_data)
 
         # If zero historical data, generate a simulated baseline so the chart renders
@@ -1187,6 +1209,7 @@ def api_report_pdf():
     """Kenya Threat Intelligence Executive Briefing — Hoxhunt-styled PDF."""
     try:
         from datetime import datetime as dt
+
         from flask import Response, jsonify
 
         from ..ke_context import KenyaContext
@@ -1197,16 +1220,16 @@ def api_report_pdf():
         stats = storage.get_stats()
         session_id_filter = request.args.get("session_id", type=int)
         if session_id_filter:
-            sessions = [s for s in storage.get_sessions(limit=50) if s["id"] == session_id_filter]
+            [s for s in storage.get_sessions(limit=50) if s["id"] == session_id_filter]
             hits = storage.get_hits_by_session(session_id_filter, limit=200)
         else:
-            sessions = storage.get_sessions(limit=50)
+            storage.get_sessions(limit=50)
             hits = storage.get_hits_for_report(limit=200)
 
         ke_ctx = KenyaContext(storage)
-        ke_cirt = ke_ctx.get_latest_ke_cirt()
+        ke_ctx.get_latest_ke_cirt()
         cbk = ke_ctx.get_latest_cbk_totals()
-        ca_advisories = ke_ctx.get_recent_ca_advisories(limit=5)
+        ke_ctx.get_recent_ca_advisories(limit=5)
 
         total_hits = stats.get("total_hits", 0)
         threat_level = "HIGH" if total_hits > 100 else "ELEVATED" if total_hits > 10 else "MODERATE"
@@ -1282,7 +1305,7 @@ def api_report_pdf():
         return Response(pdf_bytes.read(), mimetype="application/pdf",
                         headers={"Content-Disposition": f"attachment; filename={filename}"})
 
-    except Exception as e:
+    except Exception:
         import traceback
         import uuid
         error_id = uuid.uuid4().hex
@@ -1985,14 +2008,7 @@ def api_threat_actors():
     hits_by_kw = storage.get_hits_by_keywords(all_keywords, limit_per_keyword=5)
     last_date_by_kw = storage.get_last_hit_dates_bulk(all_keywords)
 
-    # One query for all paste hits, then aggregate in Python (no N+1 per-actor
-    # queries, no truncated lookback). Errors are logged — never silently
-    # swallowed into zeroes.
-    try:
-        paste_hits = storage.get_paste_hits()
-    except Exception as exc:  # log so it surfaces in docker compose logs
-        print(f"[threat-actors] paste_hits query error: {exc}")
-        paste_hits = []
+    # Paste-hit aggregation removed; hit counts are derived from keyword hits.
 
     def _actor_match_terms(actor: dict) -> set[str]:
         terms: set[str] = set()
@@ -2010,7 +2026,7 @@ def api_threat_actors():
         terms.discard("")
         return terms
 
-    actor_terms = [(a, _actor_match_terms(a)) for a in all_actors]
+    [(a, _actor_match_terms(a)) for a in all_actors]
     hit_count_by_slug = {a["slug"]: sum(len(hits_by_kw.get(kw, [])) for kw in a.get("keywords", [])) for a in all_actors}
 
     enriched = []
@@ -2411,7 +2427,6 @@ def api_dns_scan(inv_id: int):
     Returns 202 Accepted with a task_id. The client polls
     GET /api/dns/investigations/{inv_id}/scan/status for completion.
     """
-    import threading
 
     from ..scan_engine import start_scan
 
@@ -2512,6 +2527,7 @@ def api_dns_scan_status(inv_id: int):
 def api_dns_osint(inv_id: int):
     """Enrich a DNS investigation with OSINT data from Shodan and URLScan."""
     import traceback
+
     from flask import jsonify
 
     storage = get_storage()
@@ -3642,7 +3658,7 @@ window._ready = true;
                 f'<font color="#58a6ff"><b>{port_scan.get("ip","")}</b></font> — '
                 f'<font color="#3fb950"><b>{len(open_ports)} open</b></font>'
                 + (f', <font color="#d29922">{len(filt_ports)} filtered</font>' if filt_ports else ""),
-                S(f"ip_ports", fontSize=8, textColor=C_TEXT, leading=12, spaceBefore=6, spaceAfter=3)
+                S("ip_ports", fontSize=8, textColor=C_TEXT, leading=12, spaceBefore=6, spaceAfter=3)
             ))
             port_rows = [[
                 Paragraph(str(p), S("pn", fontSize=7, fontName="Helvetica-Bold", textColor=C_GREEN, leading=10)),
@@ -4017,8 +4033,8 @@ def api_paste_scrape():
     if not user.is_admin:
         return jsonify({"error": "Admin only"}), 403
     try:
-        from darkweb_scanner.scrapers.paste_scraper import run_paste_scraper
         from darkweb_scanner.scrapers.keyword_extractor import extract_and_store_keywords
+        from darkweb_scanner.scrapers.paste_scraper import run_paste_scraper
 
         # Run the scraper
         scrape_result = run_paste_scraper(storage)
@@ -5046,7 +5062,6 @@ def api_breaches_directory():
     years_tracked). Each record includes title, description, sector,
     threat_actor, leak_url, date, status_badges, and records_exposed.
     """
-    from sqlalchemy import func
 
     storage = get_storage()
     try:

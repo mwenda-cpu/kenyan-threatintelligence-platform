@@ -9,9 +9,6 @@ import os
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
-
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +57,14 @@ def build_digest_pdf(feed_data: dict, scanner_summary: dict = None, date: dateti
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import (
+        HRFlowable,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     if date is None:
         date = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=8)
@@ -377,7 +381,7 @@ def send_digest(storage, recipients: list = None, date: datetime = None) -> dict
     from .feeds import fetch_all_feeds
     try:
         feed_data = fetch_all_feeds()
-    except Exception as e:
+    except Exception:
         logger.exception("Feed fetch failed")
         feed_data = {"otx_pulses":[],"cisa_kev":[],"urlhaus":[],"feodo":[],"rss":[]}
 
@@ -405,11 +409,12 @@ def send_digest(storage, recipients: list = None, date: datetime = None) -> dict
         logger.error("MAILGUN_API_KEY is not set; cannot send digest")
         return {"ok": False, "error": "MAILGUN_API_KEY not set"}
 
-    import requests as _requests
     from email import encoders
     from email.mime.base import MIMEBase
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
+
+    import requests as _requests
 
     errors, sent = [], 0
     for recipient in recipients:

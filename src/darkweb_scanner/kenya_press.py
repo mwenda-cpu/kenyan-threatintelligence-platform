@@ -2,15 +2,13 @@
 Kenya-focused ransomware press aggregator.
 Merges Kenyan RSS feeds, NC4 official newsroom (HTML scrape), and filtered ransomware.live press data.
 """
-import feedparser
-import requests
 import logging
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
+import feedparser
+import requests
 from bs4 import BeautifulSoup
-
-from . import ransomware_live as rw
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +147,9 @@ def fetch_kenya_press(limit: int = 20) -> List[Dict]:
     Sorted newest-first, deduplicated by URL.
     NEVER raises — always returns a list (possibly empty).
     """
+    import datetime
     import logging
     from email.utils import parsedate_to_datetime
-    import datetime
     log = logging.getLogger(__name__)
     items = []
     seen_urls = set()
@@ -172,17 +170,17 @@ def fetch_kenya_press(limit: int = 20) -> List[Dict]:
         try:
             response = requests.get(feed_url, timeout=8)
             parsed = feedparser.parse(response.content)
-            
+
             if parsed.bozo:
                 log.warning('Feed parser warning for %s: %s', source_name, parsed.bozo_exception)
-            
+
             for entry in parsed.entries:
                 try:
                     title = (getattr(entry, 'title', '') or '').strip()
                     link  = (getattr(entry, 'link', '') or '').strip()
                     if not title or not link:
                         continue
-                    
+
                     # Normalize URL for dedup
                     norm_url = link.rstrip('/').split('?')[0]
                     if norm_url in seen_urls:

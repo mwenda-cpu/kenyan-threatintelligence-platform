@@ -1,17 +1,16 @@
+import argparse
 import asyncio
 import json
 import os
-import argparse
 import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from dotenv import load_dotenv
-from telethon import TelegramClient
-from telethon.tl.types import (
-    MessageMediaPhoto, MessageMediaDocument, MessageMediaWebPage
-)
+
 from deep_translator import GoogleTranslator
-from langdetect import detect, LangDetectException
+from dotenv import load_dotenv
+from langdetect import LangDetectException, detect
+from telethon import TelegramClient
+from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, MessageMediaWebPage
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────────
 load_dotenv()
@@ -225,9 +224,14 @@ def format_entities(text: str, entities) -> str:
         return html.escape(text).replace("\n", "<br>")
 
     from telethon.tl.types import (
-        MessageEntityBold, MessageEntityItalic, MessageEntityCode,
-        MessageEntityPre, MessageEntityUrl, MessageEntityTextUrl,
-        MessageEntityMention, MessageEntityHashtag
+        MessageEntityBold,
+        MessageEntityCode,
+        MessageEntityHashtag,
+        MessageEntityItalic,
+        MessageEntityMention,
+        MessageEntityPre,
+        MessageEntityTextUrl,
+        MessageEntityUrl,
     )
 
     tags = []
@@ -420,7 +424,7 @@ async def process_channel(client, channel_id, limit, output_dir,
     async for message in client.iter_messages(channel, limit=fetch_limit):
 
         if cutoff_date and message.date < cutoff_date:
-            print(f"  [i] Reached cutoff date. Stopping.")
+            print("  [i] Reached cutoff date. Stopping.")
             break
 
         if not assert_disk_space(min_space_gb, str(output_dir)):
@@ -497,7 +501,7 @@ async def process_channel(client, channel_id, limit, output_dir,
                     file_size_mb = getattr(doc, "size", 0) / (1024 * 1024)
 
                     if max_video_mb == 0:
-                        print(f"  [i] Video skipped (--max-video-mb 0)")
+                        print("  [i] Video skipped (--max-video-mb 0)")
                     elif file_size_mb > max_video_mb:
                         print(f"  [!] Video skipped — {file_size_mb:.1f} MB > limit {max_video_mb} MB")
                     elif assert_disk_space(min_space_gb, str(output_dir)):
@@ -533,7 +537,7 @@ async def process_channel(client, channel_id, limit, output_dir,
     # Language breakdown summary
     print(f"\n  [✓] {len(results)} messages saved → {channel_dir}/")
     if lang_stats:
-        print(f"  [i] Language breakdown:")
+        print("  [i] Language breakdown:")
         for lang, count in sorted(lang_stats.items(), key=lambda x: -x[1]):
             print(f"       {get_lang_display(lang):<30} {count} messages")
     print(f"  [✓] Open: firefox {html_path}")

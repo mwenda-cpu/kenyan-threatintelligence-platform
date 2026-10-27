@@ -8,20 +8,29 @@ matching the Hoxhunt visual design system.
 from __future__ import annotations
 
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import mm
 from reportlab.platypus import (
-    Flowable, Spacer, Table, TableStyle, Paragraph, HRFlowable,
+    Paragraph,
+    Table,
+    TableStyle,
 )
-from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
 from ..styles.colors import (
-    BG_PRIMARY, BG_SECONDARY, BG_TERTIARY, ACCENT_BLUE, ACCENT_PURPLE,
-    ACCENT_PINK, ACCENT_RED, ACCENT_GREEN, TEXT_PRIMARY, TEXT_MUTED,
-    TEXT_LABEL, KE_RED, KE_GREEN,
+    ACCENT_BLUE,
+    ACCENT_GREEN,
+    ACCENT_PINK,
+    ACCENT_PURPLE,
+    ACCENT_RED,
+    BG_PRIMARY,
+    BG_SECONDARY,
+    BG_TERTIARY,
+    TEXT_LABEL,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
 )
-from ..styles.typography import body_style, heading_style, SIZE_H2
-from ..styles.layout import CONTENT_W, MARGIN
+from ..styles.layout import CONTENT_W
+from ..styles.typography import body_style, heading_style
 
 # ── Section divider ─────────────────────────────────────────────────────────
 

@@ -12,7 +12,7 @@ from typing import Optional
 import bcrypt
 import pyotp
 import qrcode
-from flask import redirect, request, session, url_for
+from flask import redirect, request, session
 
 logger = logging.getLogger(__name__)
 

@@ -2,13 +2,16 @@
 Table of contents section — Hoxhunt-styled with large section numbers.
 """
 
-from reportlab.platypus import Spacer, Paragraph, Table, TableStyle, PageBreak
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+from reportlab.platypus import PageBreak, Paragraph, Spacer, Table, TableStyle
 
-from ..styles.colors import TEXT_PRIMARY, TEXT_MUTED, TEXT_LABEL, ACCENT_BLUE, ACCENT_PURPLE, BG_SECONDARY
-from ..styles.typography import body_style, heading_style, SIZE_H1
+from ..styles.colors import (
+    ACCENT_BLUE,
+    TEXT_LABEL,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+)
 from ..styles.layout import CONTENT_W, SECTIONS
-from ..components import section_divider
+from ..styles.typography import SIZE_H1, body_style, heading_style
 
 
 def toc_flowables() -> list:

@@ -8,27 +8,44 @@ pull quotes, checklists, and branded footers.
 from __future__ import annotations
 
 from io import BytesIO
-from datetime import datetime, timezone
 from typing import Optional
 
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
-from reportlab.lib import colors
 from reportlab.platypus import (
-    BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer,
+    BaseDocTemplate,
+    Frame,
+    PageTemplate,
 )
-from reportlab.lib.styles import ParagraphStyle
 
+from .sections import (
+    appendix,
+    campaigns,
+    cover,
+    executive_summary,
+    human_risk,
+    strategic_guidance,
+    threat_landscape,
+    toc,
+)
 from .styles.colors import (
-    BG_PRIMARY, ACCENT_BLUE, TEXT_MUTED, TEXT_LABEL,
-    KE_RED, KE_GREEN, KE_BLACK,
+    ACCENT_BLUE,
+    BG_PRIMARY,
+    KE_BLACK,
+    KE_GREEN,
+    KE_RED,
+    TEXT_LABEL,
 )
 from .styles.layout import (
-    CONTENT_W, CONTENT_H, MARGIN, PAGE_W, PAGE_H,
-    FOOTER_LEFT, FOOTER_RIGHT,
+    CONTENT_H,
+    CONTENT_W,
+    FOOTER_LEFT,
+    FOOTER_RIGHT,
+    MARGIN,
+    PAGE_H,
+    PAGE_W,
 )
-from .sections import cover, toc, executive_summary, threat_landscape
-from .sections import human_risk, campaigns, strategic_guidance, appendix
 
 
 def _page(canvas, doc):

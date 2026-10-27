@@ -371,7 +371,7 @@ async def run_onion_crawl_cycle(
                     )
                 except Exception:
                     pass
- 
+
             hits += matched
             print(f"[crawler] fetched {url} | keywords matched: {matched}", flush=True)
             if session_id is not None:

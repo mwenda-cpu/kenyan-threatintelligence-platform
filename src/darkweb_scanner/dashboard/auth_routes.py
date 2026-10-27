@@ -399,7 +399,8 @@ def oauth_callback(provider):
 
     # Apple sends user info in the ID token, not a userinfo endpoint
     if provider == "apple":
-        import base64, json as _json
+        import base64
+        import json as _json
         id_token = token_resp.json().get("id_token", "")
         try:
             payload = id_token.split(".")[1]

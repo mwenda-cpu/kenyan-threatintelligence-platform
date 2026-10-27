@@ -4,7 +4,7 @@ Typography definitions for the KE-CIRT Threat Intel Report.
 Uses ReportLab built-in Helvetica family (no custom TTF files required).
 """
 
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT, TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.styles import ParagraphStyle
 
 # ── Font names (ReportLab built-ins) ─────────────────────────────────────────

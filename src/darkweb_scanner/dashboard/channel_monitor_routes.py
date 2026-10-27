@@ -4,20 +4,17 @@ Integrates channel_monitor.py into the threat intelligence dashboard.
 """
 
 import asyncio
-import json
 import os
 import shutil
 import tempfile
 import threading
-import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Blueprint, after_this_request, jsonify, request, send_file, session
+from flask import Blueprint, after_this_request, jsonify, request, send_file
 
 from ..auth import require_login
-from .storage_helper import get_storage
 
 channel_monitor_bp = Blueprint("channel_monitor", __name__)
 
@@ -310,6 +307,7 @@ async def _run_channel_monitor(job_id: str, config: dict, output_dir: Path, cred
 
     try:
         from telethon import TelegramClient
+
         from ..channel_monitor import (
             process_channel,
         )

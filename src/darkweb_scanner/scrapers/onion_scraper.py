@@ -17,7 +17,6 @@ import requests
 from bs4 import BeautifulSoup
 
 from darkweb_scanner.storage import Storage
-from darkweb_scanner.scrapers.keyword_extractor import extract_kenyan_pii
 
 logger = logging.getLogger(__name__)
 

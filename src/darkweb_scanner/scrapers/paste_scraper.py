@@ -269,9 +269,8 @@ def scrape_pastebin_api() -> list[PasteResult]:
             if count >= MAX_PASTES_PER_SOURCE:
                 break
             paste_id = paste.findtext("paste_key", "")
-            paste_title = paste.findtext("paste_title", "")
+            paste.findtext("paste_title", "")
             paste_date = paste.findtext("paste_date", "")
-            paste_url = f"https://pastebin.com/{paste_id}"
             raw_url = f"https://pastebin.com/raw/{paste_id}"
 
             page = _safe_get(raw_url)

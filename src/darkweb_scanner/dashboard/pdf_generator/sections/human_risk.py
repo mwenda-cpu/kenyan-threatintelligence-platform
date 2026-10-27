@@ -3,18 +3,17 @@ Section 03 — Human Risk Findings (Kenyan adaptation).
 Lures, CBK fraud stats, reporting guidance.
 """
 
-from reportlab.platypus import Spacer, Paragraph, PageBreak, Image
-from reportlab.lib.utils import ImageReader
 from io import BytesIO
 
-from ..components import pull_quote, styled_table, checklist_box, section_divider
-from ..styles.colors import (
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_LABEL, ACCENT_BLUE, ACCENT_PURPLE,
-    ACCENT_PINK, BG_SECONDARY,
-)
-from ..styles.typography import body_style, heading_style, SIZE_H1
-from ..styles.layout import CONTENT_W, SECTIONS
+from reportlab.platypus import Image, PageBreak, Paragraph, Spacer
+
 from ..charts import cbk_fraud_bar
+from ..components import pull_quote, section_divider
+from ..styles.colors import (
+    TEXT_PRIMARY,
+)
+from ..styles.layout import CONTENT_W, SECTIONS
+from ..styles.typography import body_style, heading_style
 
 
 def human_risk_flowables(data: dict) -> list:

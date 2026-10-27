@@ -1,10 +1,11 @@
 """Unit tests for main.run_scan orchestration."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from darkweb_scanner.main import run_scan
+import pytest
+
 from darkweb_scanner.crawler import CrawlConfig
+from darkweb_scanner.main import run_scan
 from darkweb_scanner.scanner import KeywordConfig
 
 

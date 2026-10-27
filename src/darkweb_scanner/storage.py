@@ -11,8 +11,19 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, create_engine, func
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker, relationship
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    func,
+)
+from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
 logger = logging.getLogger(__name__)
 
@@ -569,7 +580,7 @@ class Storage:
         preserving the original per-call behaviour.
         """
         try:
-            from flask import has_request_context, g
+            from flask import g, has_request_context
             if has_request_context():
                 if not hasattr(g, _FLASK_SESSION_KEY):
                     setattr(g, _FLASK_SESSION_KEY, self._SessionFactory())

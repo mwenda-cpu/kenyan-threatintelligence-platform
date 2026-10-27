@@ -8,6 +8,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
 import requests
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,7 @@ def fetch_feodo_c2s(limit: int = 10) -> list[dict]:
             "country": entry.get("country", ""),
             "first_seen": entry.get("first_seen", ""),
             "last_online": entry.get("last_online", ""),
-            "sea_relevant": entry.get("country", "").upper() in "sea_relevant": entry.get("country", "").upper() in ["KE", "TZ", "UG", "RW", "BI", "ET", "SO", "DJ", "ER", "SS"], ,
+            "sea_relevant": entry.get("country", "").upper() in ["KE", "TZ", "UG", "RW", "BI", "ET", "SO", "DJ", "ER", "SS"],
         })
     return results
 

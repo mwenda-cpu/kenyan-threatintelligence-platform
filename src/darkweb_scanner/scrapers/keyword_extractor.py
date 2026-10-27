@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import func  # noqa: E402
+
 from darkweb_scanner.storage import Keyword  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,6 @@ def extract_kenyan_pii(text):
     """Extract Kenyan PII from text using regex patterns."""
     if not text:
         return []
-    import re
     results = []
     seen = set()
     for match in KE_PHONE_RE.finditer(text):
@@ -107,7 +107,8 @@ DOMAIN_WHITELIST = {
 }
 
 
-# ── URL / domain extraction regex ───────────────────────────────────────
+# ── Domain category map ───────────────────────────────────────────────────────
+DOMAIN_CATEGORY = {d: "domain" for d in DOMAIN_WHITELIST}
 # Matches http://, https://, or bare domains with .ke/.co.ke/.go.ke/.or.ke/.com
 _URL_RE = re.compile(
     r"https?://(?:www\.)?([A-Za-z0-9.-]+\.[A-Za-z]{2,})(?:/[^\s]*)?",
@@ -253,10 +254,10 @@ def extract_and_store_keywords(storage, lookback_days: int = 7,
 
     return {
         "hits_analyzed": len(recent),
-        "keywords_extracted": len(all_kws),
+        "keywords_extracted": len(keywords),
         "keywords_added": added,
         "purge_performed": purge_first,
-        "keywords": all_kws,
+        "keywords": keywords,
     }
 
 

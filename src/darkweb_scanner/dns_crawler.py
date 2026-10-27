@@ -5,10 +5,10 @@ Sources: dnspython (active), crt.sh (passive CT logs),
 No paid API keys required.
 """
 
-import logging
-import socket
 import json
+import logging
 import re
+import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
@@ -50,8 +50,8 @@ def query_dns_records(domain: str) -> dict:
     Returns dict of record_type -> list of values.
     """
     try:
-        import dns.resolver
         import dns.exception
+        import dns.resolver
     except ImportError:
         logger.error("dnspython not installed")
         return {}
@@ -91,10 +91,10 @@ def attempt_zone_transfer(domain: str) -> dict:
     Returns results per nameserver.
     """
     try:
+        import dns.exception
+        import dns.query
         import dns.resolver
         import dns.zone
-        import dns.query
-        import dns.exception
     except ImportError:
         return {"error": "dnspython not installed"}
 
@@ -161,7 +161,7 @@ def fetch_crtsh(domain: str) -> list[dict]:
     Returns list of subdomains with cert metadata.
     """
     # Use safe_fetch: crt.sh is allowlisted, TLS verified, IP pre-checked.
-    from darkweb_scanner.dashboard.http_client import safe_fetch, SafeFetchError
+    from darkweb_scanner.dashboard.http_client import SafeFetchError, safe_fetch
     try:
         result = safe_fetch(
             f"https://crt.sh/?q=%.{domain}&output=json",
@@ -297,8 +297,8 @@ def analyze_email_security(domain: str, dns_records: dict) -> dict:
 
     # DMARC
     try:
-        import dns.resolver
         import dns.exception
+        import dns.resolver
         resolver = dns.resolver.Resolver()
         resolver.timeout = DNS_TIMEOUT
         answers = resolver.resolve(f"_dmarc.{domain}", "TXT", lifetime=DNS_TIMEOUT)
@@ -318,8 +318,8 @@ def analyze_email_security(domain: str, dns_records: dict) -> dict:
     # DKIM — check common selectors
     common_selectors = ["default", "google", "k1", "k2", "mail", "dkim", "selector1", "selector2", "smtp", "email"]
     try:
-        import dns.resolver
         import dns.exception
+        import dns.resolver
         resolver = dns.resolver.Resolver()
         resolver.timeout = 2
         for sel in common_selectors:
@@ -725,7 +725,7 @@ def enumerate_directories(
     Returns list of {path, url, status_code, content_length, redirect_to}
     for any path that returns a non-404 response.
     """
-    from darkweb_scanner.dashboard.http_client import resolve_and_check_target, SafeFetchError
+    from darkweb_scanner.dashboard.http_client import SafeFetchError, resolve_and_check_target
     try:
         resolve_and_check_target(target)
     except SafeFetchError as e:
@@ -842,7 +842,7 @@ def probe_service(fqdn: str) -> Optional[dict]:
     Probe a single hostname over HTTPS then HTTP.
     Returns {host, url, status_code, server, title, tech, redirect_to} or None.
     """
-    from darkweb_scanner.dashboard.http_client import resolve_and_check_target, SafeFetchError
+    from darkweb_scanner.dashboard.http_client import SafeFetchError, resolve_and_check_target
     try:
         resolve_and_check_target(fqdn)
     except SafeFetchError as e:

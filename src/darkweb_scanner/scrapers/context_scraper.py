@@ -74,8 +74,9 @@ def _fetch_pdf_text(url: str) -> Optional[str]:
 
         # Try pdfplumber first
         try:
-            import pdfplumber
             import io
+
+            import pdfplumber
             with pdfplumber.open(io.BytesIO(resp.content)) as pdf:
                 text_parts = []
                 for page in pdf.pages:
@@ -92,8 +93,9 @@ def _fetch_pdf_text(url: str) -> Optional[str]:
 
         # Fallback: PyPDF2
         try:
-            import PyPDF2
             import io
+
+            import PyPDF2
             reader = PyPDF2.PdfReader(io.BytesIO(resp.content))
             text_parts = []
             for page in reader.pages:
@@ -195,7 +197,7 @@ def scrape_context(storage: Storage) -> dict:
     for seed in seeds:
         name = seed.get("name", "Unknown")
         url = seed.get("url", "")
-        seed_type = seed.get("type", "news")
+        seed.get("type", "news")
 
         if not url:
             continue

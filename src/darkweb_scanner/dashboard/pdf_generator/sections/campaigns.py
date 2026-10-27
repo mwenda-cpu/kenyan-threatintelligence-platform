@@ -3,18 +3,21 @@ Section 04 — Campaigns, Tooling & Environments Research.
 LockBit killchain, BEC/KRA analysis, tooling, charts.
 """
 
-from reportlab.platypus import Spacer, Paragraph, PageBreak, Image
-from reportlab.lib.utils import ImageReader
 from io import BytesIO
 
-from ..components import pull_quote, styled_table, section_divider
+from reportlab.platypus import Image, PageBreak, Paragraph, Spacer
+
+from ..charts import donut_chart, timeline_line
+from ..components import pull_quote, section_divider, styled_table
 from ..styles.colors import (
-    TEXT_PRIMARY, TEXT_MUTED, TEXT_LABEL, ACCENT_BLUE, ACCENT_PURPLE,
-    ACCENT_PINK, BG_SECONDARY,
+    ACCENT_BLUE,
+    ACCENT_PINK,
+    ACCENT_PURPLE,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
 )
-from ..styles.typography import body_style, heading_style, SIZE_H1
 from ..styles.layout import CONTENT_W, SECTIONS
-from ..charts import timeline_line, donut_chart
+from ..styles.typography import body_style, heading_style
 
 
 def campaigns_flowables(data: dict) -> list:
