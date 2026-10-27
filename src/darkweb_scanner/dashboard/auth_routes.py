@@ -161,7 +161,7 @@ def reset_password():
             "If an account exists, a reset link has been sent to that address.",
             "info",
         )
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     return render_template("reset_password.html")
 
@@ -209,7 +209,7 @@ def reset_password_confirm(token):
 
         storage.update_user_password(user.id, hash_password(new_pw))
         flash("Password reset successful. You can now sign in.", "success")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     return render_template("reset_confirm.html", token=token)
 
@@ -265,7 +265,7 @@ def login():
 @auth_bp.route("/totp/setup", methods=["GET", "POST"])
 def totp_setup():
     if not session.get("logged_in"):
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     storage = get_storage()
     user_id = session["user_id"]
@@ -303,7 +303,7 @@ def totp_setup():
 def totp_verify():
     pending_id = session.get("totp_pending_user_id")
     if not pending_id:
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     storage = get_storage()
 
@@ -313,7 +313,7 @@ def totp_verify():
 
         if not user or not user.totp_secret:
             flash("Session expired.", "error")
-            return redirect(url_for("auth.login"))
+            return redirect("/login")
 
         if not verify_totp(user.totp_secret, code):
             flash("Invalid code. Please try again.", "error")
@@ -337,7 +337,7 @@ def oauth_redirect(provider):
     providers = get_oauth_providers()
     if provider not in providers:
         flash("OAuth provider not configured.", "error")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     p = providers[provider]
     state = secrets.token_urlsafe(32)
@@ -360,16 +360,16 @@ def oauth_callback(provider):
     providers = get_oauth_providers()
     if provider not in providers:
         flash("Unknown OAuth provider.", "error")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     if request.args.get("state") != session.pop("oauth_state", None):
         flash("OAuth state mismatch. Please try again.", "error")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     code = request.args.get("code")
     if not code:
         flash("OAuth login failed — no code received.", "error")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     p = providers[provider]
     callback_url = url_for("auth.oauth_callback", provider=provider, _external=True)
@@ -391,11 +391,11 @@ def oauth_callback(provider):
     except Exception as e:
         logger.error(f"OAuth token exchange failed: {e}")
         flash("OAuth login failed. Please try again.", "error")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     if not access_token:
         flash("OAuth login failed — no access token.", "error")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     # Apple sends user info in the ID token, not a userinfo endpoint
     if provider == "apple":
@@ -417,7 +417,7 @@ def oauth_callback(provider):
         except Exception as e:
             logger.error(f"OAuth userinfo failed: {e}")
             flash("OAuth login failed — could not fetch user info.", "error")
-            return redirect(url_for("auth.login"))
+            return redirect("/login")
     else:
         userinfo = {}
 
@@ -439,11 +439,11 @@ def oauth_callback(provider):
         username = email.split("@")[0] if email else f"apple_{str(oauth_id)[:8]}"
     else:
         flash("Unknown provider.", "error")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     if not oauth_id:
         flash("Could not retrieve user identity from OAuth provider.", "error")
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     storage = get_storage()
 
@@ -483,7 +483,7 @@ def oauth_callback(provider):
 @auth_bp.route("/force-change-password", methods=["GET", "POST"])
 def force_change_password():
     if not session.get("logged_in"):
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
 
     if not session.get("must_change_password"):
         return redirect(url_for("dashboard.index"))
@@ -521,4 +521,4 @@ def force_change_password():
 def logout():
     logout_user()
     flash("You have been logged out.", "success")
-    return redirect(url_for("auth.login"))
+    return redirect("/login")

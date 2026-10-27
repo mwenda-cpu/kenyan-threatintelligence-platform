@@ -93,7 +93,7 @@ def index():
     user = storage.get_user_by_id(session["user_id"])
     if not user:
         session.clear()
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
     return render_template("index.html", username=session.get("username"), is_admin=user.is_admin)
 
 
@@ -103,7 +103,7 @@ def cve_panel():
     storage = get_storage()
     user = storage.get_user_by_id(session["user_id"])
     if user is None:
-        return redirect(url_for("auth.login"))
+        return redirect("/login")
     return render_template(
         "cve_panel.html",
         username=session.get("username"),
