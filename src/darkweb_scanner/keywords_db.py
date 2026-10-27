@@ -103,7 +103,7 @@ def keyword_config(storage, seed_path=None):
     """Build a ``KeywordConfig`` from the database (seeding it when empty)."""
     from .scanner import KeywordConfig
 
-    seed_if_empty(storage, seed_path)
+    seed_keywords(storage, seed_path)
     categories = storage.keyword_categories()
     if not categories:
         logger.warning("Keyword table is empty — the crawler will not match anything")

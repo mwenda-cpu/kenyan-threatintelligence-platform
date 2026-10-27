@@ -133,3 +133,104 @@ keywords:
   ".ac.ke":      {severity: medium, category: domain}
   ".co.ke":      {severity: medium, category: domain}
   ".or.ke":      {severity: low, category: domain}
+  # ── Kenyan threat intel (auto-seeded) ──
+  NCBA: {severity: high, category: bank}
+  Absa: {severity: high, category: bank}
+  "Standard Chartered": {severity: high, category: bank}
+  DTB: {severity: high, category: bank}
+  "I&M": {severity: high, category: bank}
+  "Family Bank": {severity: medium, category: bank}
+  "Co-op Bank": {severity: high, category: bank}
+  "Equity Bank": {severity: critical, category: bank}
+  KCB: {severity: critical, category: bank}
+  "M-Pesa": {severity: critical, category: fintech}
+  "Airtel Money": {severity: high, category: fintech}
+  "Stima Sacco": {severity: medium, category: sacco}
+  "Mwalimu Sacco": {severity: medium, category: sacco}
+  "Harambee Sacco": {severity: medium, category: sacco}
+  Safaricom: {severity: critical, category: telco}
+  Telkom: {severity: medium, category: telco}
+  Faiba: {severity: medium, category: telco}
+  "Jamii Telecom": {severity: medium, category: telco}
+  eCitizen: {severity: critical, category: government}
+  iTax: {severity: critical, category: government}
+  KRA: {severity: critical, category: government}
+  NTSA: {severity: high, category: government}
+  NEMIS: {severity: high, category: government}
+  "Huduma Namba": {severity: high, category: identifier}
+  IEBC: {severity: high, category: government}
+  KEBS: {severity: high, category: regulator}
+  KPLC: {severity: high, category: infrastructure}
+  KPC: {severity: high, category: infrastructure}
+  NSSF: {severity: high, category: identifier}
+  NHIF: {severity: high, category: identifier}
+  SHA: {severity: high, category: government}
+  IPRS: {severity: critical, category: identifier}
+  IFMIS: {severity: critical, category: government}
+  TIMS: {severity: high, category: government}
+  ePassport: {severity: high, category: government}
+  ePermit: {severity: high, category: government}
+  "KRA PIN": {severity: critical, category: identifier}
+  "Business Registration Service": {severity: medium, category: government}
+  "Kenya Law": {severity: medium, category: government}
+  "Judiciary Kenya": {severity: high, category: government}
+  "Parliament Kenya": {severity: medium, category: government}
+  "Anonymous Sudan": {severity: critical, category: threat_actor}
+  APT39: {severity: high, category: threat_actor}
+  MuddyWater: {severity: high, category: threat_actor}
+  LockBit: {severity: critical, category: threat_actor}
+  BlackCat: {severity: critical, category: threat_actor}
+  Cl0p: {severity: critical, category: threat_actor}
+  RansomHub: {severity: critical, category: threat_actor}
+  Akira: {severity: high, category: threat_actor}
+  "Hunters International": {severity: high, category: threat_actor}
+  Medusa: {severity: high, category: threat_actor}
+  Qilin: {severity: high, category: threat_actor}
+  Kimsuky: {severity: high, category: threat_actor}
+  Andariel: {severity: high, category: threat_actor}
+  "Charming Kitten": {severity: high, category: threat_actor}
+  DragonForce: {severity: high, category: threat_actor}
+  "Silent Librarian": {severity: high, category: threat_actor}
+  "Sim swap Kenya": {severity: critical, category: threat_type}
+  "M-Pesa fraud": {severity: critical, category: threat_type}
+  "Mobile banking fraud": {severity: high, category: threat_type}
+  "Phishing Kenya": {severity: high, category: threat_type}
+  "BEC Kenya": {severity: high, category: threat_type}
+  "Ransomware Kenya": {severity: high, category: threat_type}
+  "Data breach Kenya": {severity: high, category: threat_type}
+  "DDoS Kenya": {severity: high, category: threat_type}
+  "Card fraud Kenya": {severity: high, category: threat_type}
+  "ATM skimming Kenya": {severity: high, category: threat_type}
+  "Loan app scam": {severity: high, category: threat_type}
+  "Sacco fraud": {severity: high, category: threat_type}
+  "Forex scam Kenya": {severity: high, category: threat_type}
+  "Crypto scam Kenya": {severity: high, category: threat_type}
+  "Ponzi scheme Kenya": {severity: high, category: threat_type}
+  .go.ke: {severity: high, category: domain}
+  .ac.ke: {severity: medium, category: domain}
+  .co.ke: {severity: medium, category: domain}
+  .or.ke: {severity: low, category: domain}
+  .ne.ke: {severity: low, category: domain}
+  "ID number": {severity: medium, category: identifier}
+  "Huduma Namba": {severity: high, category: identifier}
+  "NSSF number": {severity: medium, category: identifier}
+  "NHIF number": {severity: medium, category: identifier}
+  "Phone number +254": {severity: medium, category: identifier}
+  "M-Pesa code": {severity: medium, category: identifier}
+  Techweez: {severity: low, category: news}
+  Kenyans.co.ke: {severity: low, category: news}
+  "Nairobi Wire": {severity: low, category: news}
+  "The Star Kenya": {severity: low, category: news}
+  "Daily Nation": {severity: low, category: news}
+  "Standard Media": {severity: low, category: news}
+  "Citizen Digital": {severity: low, category: news}
+  K24: {severity: low, category: news}
+  KBC: {severity: low, category: news}
+  "Kenya Pipeline": {severity: high, category: infrastructure}
+  KenGen: {severity: high, category: infrastructure}
+  KetRaco: {severity: high, category: infrastructure}
+  Ketraco: {severity: high, category: infrastructure}
+  "Kenya Ports Authority": {severity: high, category: infrastructure}
+  JKIA: {severity: high, category: infrastructure}
+  "Wilson Airport": {severity: high, category: infrastructure}
+  "Kenya Railways": {severity: high, category: infrastructure}

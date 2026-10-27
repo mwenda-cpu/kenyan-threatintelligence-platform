@@ -76,10 +76,10 @@ def _keyword_store():
 
     The data-dir copy (user edits, legacy) is used first, then the shipped
     config default."""
-    from ..keywords_db import seed_if_empty
+    from ..keywords_db import seed_keywords
 
     storage = get_storage()
-    seed_if_empty(storage, [KEYWORDS_FILE, KEYWORDS_DEFAULT])
+    seed_keywords(storage, [KEYWORDS_FILE, KEYWORDS_DEFAULT])
     return storage
 
 
@@ -218,7 +218,7 @@ def api_keywords_get():
         # Compute daily hit counts per keyword over the last 30 days
         # by scanning recent paste hits for domain matches in matched_value/context.
         cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
-        hits = storage.get_recent_paste_hits(limit=5000)
+        hits = storage.get_recent_paste_hits(limit=100000)
 
         # Build per-domain daily counts: {domain: {date_str: count}}
         from collections import defaultdict
@@ -719,7 +719,7 @@ def api_crawl_start():
                 async def _main():
                     # Schedule the crawl coroutine explicitly on the loop.
                     task = asyncio.create_task(
-                        run_onion_crawl_cycle(storage=storage, config=crawl_config)
+                        run_onion_crawl_cycle(storage=storage, config=crawl_config, session_id=session_id)
                     )
                     return await task
 

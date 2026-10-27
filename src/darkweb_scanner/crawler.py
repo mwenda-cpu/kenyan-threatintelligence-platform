@@ -276,6 +276,7 @@ async def run_onion_crawl_cycle(
     storage: Optional[Storage] = None,
     tor: Optional[TorClient] = None,
     config: Optional[CrawlConfig] = None,
+    session_id: Optional[int] = None,
 ) -> dict[str, int]:
     """Run one crawl cycle over every active onion seed.
 
@@ -305,7 +306,13 @@ async def run_onion_crawl_cycle(
         return {"fetched": 0, "hits": 0}
 
     # ── Keywords from the DB (YAML is the fallback seed) ───────────────────
-    kw_config = keyword_config(storage, KEYWORDS_DEFAULT)
+    from pathlib import Path as _P
+    _seed_paths = []
+    _data_kw = _P(os.getenv("DATA_DIR", "/app/data")) / "keywords.yaml"
+    if _data_kw.exists():
+        _seed_paths.append(_data_kw)
+    _seed_paths.append(KEYWORDS_DEFAULT)
+    kw_config = keyword_config(storage, _seed_paths)
     scanner = Scanner(kw_config)
 
     tor_client = tor or create_tor_client()
@@ -313,7 +320,11 @@ async def run_onion_crawl_cycle(
     hits = 0
     session = await tor_client.get_session()
     try:
+        stop_flag = pathlib.Path(os.environ.get("DATA_DIR", "/app/data")) / "crawl.stop"
         for url in seeds:
+            if stop_flag.exists():
+                logger.info("Stop flag detected — halting crawl.")
+                break
             fetched += 1
             text, error = await _fetch_page(session, url)
             matched = 0
@@ -328,26 +339,43 @@ async def run_onion_crawl_cycle(
                     f"[crawler] fetched {url} | keywords matched: 0 (error: {error or 'empty response'})",
                     flush=True,
                 )
+                if session_id is not None:
+                    storage.update_crawl_session(session_id, fetched, hits, status="running")
                 continue
 
             hit_list = scanner.scan(url=url, text=text, depth=0)
+            matched = len(hit_list)
             seen_patterns = storage.get_paste_hit_patterns(url)
             for hit in hit_list:
-                if hit.keyword in seen_patterns:
-                    continue
-                storage.save_paste_hit(
-                    paste_id=url,
-                    url=url,
-                    source="onion_crawler",
-                    matched_pattern=hit.keyword,
-                    matched_value=hit.keyword,
-                    context=hit.context,
-                )
-                seen_patterns.add(hit.keyword)
-                matched += 1
-
+                if hit.keyword not in seen_patterns:
+                    storage.save_paste_hit(
+                        paste_id=url,
+                        url=url,
+                        source="onion_crawler",
+                        matched_pattern=hit.keyword,
+                        matched_value=hit.keyword,
+                        context=hit.context,
+                    )
+                    seen_patterns.add(hit.keyword)
+                # Persist to keyword_hits (session-linked) for every found hit.
+                try:
+                    storage.save_hit(
+                        url=hit.url or url,
+                        keyword=hit.keyword,
+                        category=hit.category,
+                        context=hit.context,
+                        position=hit.position,
+                        depth=hit.depth,
+                        session_id=session_id,
+                        source_url=hit.url or url,
+                    )
+                except Exception:
+                    pass
+ 
             hits += matched
             print(f"[crawler] fetched {url} | keywords matched: {matched}", flush=True)
+            if session_id is not None:
+                storage.update_crawl_session(session_id, fetched, hits, status="running")
     finally:
         await tor_client.close()
 

@@ -1059,15 +1059,17 @@ class Storage:
                 .all()
             )
             return [
-                {
-                    "id": r.id,
-                    "started_at": r.started_at.isoformat() if r.started_at else None,
-                    "ended_at": r.ended_at.isoformat() if r.ended_at else None,
-                    "seed_urls": r.seed_urls or "[]",
-                    "pages_crawled": r.pages_crawled or 0,
-                    "hits_found": r.hits_found or 0,
-                    "status": r.status or "completed",
-                }
+                 {
+                     "id": r.id,
+                     "started_at": r.started_at.isoformat() if r.started_at else None,
+                     "ended_at": r.ended_at.isoformat() if r.ended_at else None,
+                     "seed_urls": r.seed_urls or "[]",
+                     "pages_crawled": r.pages_crawled or 0,
+                     "hits_found": r.hits_found or 0,
+                     "pages": r.pages_crawled or 0,
+                     "hits": r.hits_found or 0,
+                     "status": r.status or "completed",
+                 }
                 for r in rows
             ]
 
