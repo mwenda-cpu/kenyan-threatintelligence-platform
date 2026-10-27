@@ -1279,7 +1279,7 @@ def api_report_pdf():
 
         pdf_bytes = build_report(data=data)
 
-        filename = f"KE-CIRT_Threat_Intel_Briefing_2026_Q4_{dt.now(timezone.utc).strftime('%Y%m%d-%H%M')}.pdf"
+        filename = f"KE-CIRT_Threat_Intel_Briefing_{dt.now(timezone.utc).strftime('%Y_%b')}.pdf"
         return Response(pdf_bytes.read(), mimetype="application/pdf",
                         headers={"Content-Disposition": f"attachment; filename={filename}"})
 

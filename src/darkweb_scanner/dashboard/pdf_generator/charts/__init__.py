@@ -72,6 +72,18 @@ def gradient_horizontal_bar(
 
     labels = [d[0] for d in data]
     values = [d[1] for d in data]
+    if not values:
+        # Return a blank placeholder image so the report still builds.
+        fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=DPI)
+        fig.patch.set_facecolor(BG_COLOR)
+        ax.set_facecolor(BG_COLOR)
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", color=TEXT_LABEL)
+        ax.set_axis_off()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=DPI, facecolor=BG_COLOR, edgecolor="none")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
     y_pos = list(range(len(data)))[::-1]  # reverse so first item is at top
 
     # Build a gradient colormap from accent_start -> accent_end
@@ -123,6 +135,17 @@ def donut_chart(
 
     values = [d[1] for d in data]
     labels = [d[0] for d in data]
+    if not values or sum(values) == 0:
+        fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=DPI)
+        fig.patch.set_facecolor(BG_COLOR)
+        ax.set_facecolor(BG_COLOR)
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", color=TEXT_LABEL)
+        ax.set_axis_off()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=DPI, facecolor=BG_COLOR, edgecolor="none")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
     total = sum(values)
 
     wedges, _ = ax.pie(

@@ -26,9 +26,9 @@ def threat_landscape_flowables(data: dict) -> list:
     story.append(Spacer(1, 10))
 
     # ── Keyword bar chart ──
-    kw_data = data.get("top_keywords", [
+    kw_data = data.get("top_keywords") or [
         ("LockBit", 101), ("BEC", 8), ("KRA", 8), ("DDoS", 2), ("cl0p", 2), ("lockbit", 1),
-    ])
+    ]
     bar_png = gradient_horizontal_bar(kw_data, "Actionable Hits by Keyword")
     bar_img = Image(BytesIO(bar_png), width=CONTENT_W * 0.95,
                     height=CONTENT_W * 0.95 * 2.6 / 6.5)
@@ -36,9 +36,9 @@ def threat_landscape_flowables(data: dict) -> list:
     story.append(Spacer(1, 10))
 
     # ── Category donut ──
-    cat_data = data.get("categories", [
+    cat_data = data.get("categories") or [
         ("threat_actor", 83), ("threat_type", 8), ("government", 7), ("ransomware", 2),
-    ])
+    ]
     total = sum(v for _, v in cat_data)
     donut_png = donut_chart(cat_data, "Hits by Category",
                             f"{total / 100:.0f}%", "of total",
