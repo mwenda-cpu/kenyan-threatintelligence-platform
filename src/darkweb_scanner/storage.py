@@ -675,7 +675,14 @@ class Storage:
             session.add(record)
             session.commit()
             session.refresh(record)
-            return record.id
+            result_id = record.id
+        try:
+            from .dashboard.dashboard_routes import send_webhook_alert
+
+            send_webhook_alert(f"New Hit: {keyword} on {url}")
+        except Exception:
+            pass
+        return result_id
 
     def mark_alerted(self, hit_id: int):
         with self.get_session() as session:

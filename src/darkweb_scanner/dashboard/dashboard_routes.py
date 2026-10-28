@@ -5179,3 +5179,13 @@ def api_profile_update():
 @dashboard_bp.route("/api/health")
 def health():
     return jsonify({"status": "ok", "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat()})
+
+def send_webhook_alert(message):
+    """Send a webhook alert using ALERT_WEBHOOK_URL if configured. Fails silently."""
+    url = os.getenv("ALERT_WEBHOOK_URL")
+    if not url:
+        return
+    try:
+        requests.post(url, json={"text": message}, timeout=10)
+    except Exception:
+        pass
