@@ -87,6 +87,22 @@ services:
       retries: 3
       start_period: 20s
 
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: darkweb-caddy
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./localhost+2.pem:/etc/caddy/localhost+2.pem:ro
+      - ./localhost+2-key.pem:/etc/caddy/localhost+2-key.pem:ro
+    depends_on:
+      - dashboard
+    restart: unless-stopped    
+    networks:
+      - scanner_net
+
   # ── Nginx SSL reverse proxy ─────────────────────────────────────────────────
   nginx:
     build:
@@ -112,6 +128,22 @@ services:
       - scanner_net
 
   
+  # ── Suricata IDS ──────────────────────────────────────────────────────────────
+  suricata:
+    build:
+      context: ./docker/suricata
+    restart: unless-stopped
+    environment:
+      - SURICATA_UPDATE_RULES=false
+    cap_add:
+      - NET_ADMIN
+      - SYS_NICE
+    volumes:
+      - ./config/suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
+      - ./data/suricata-logs:/var/log/suricata
+    networks:
+      - scanner_net
+
 volumes:
   tor_data:
   app_data:
@@ -121,5 +153,10 @@ volumes:
   pg_data:
 
 networks:
-  scanner_net:
+   threatintel-platform_default:
+    external: true
+
+   scanner_net:
     driver: bridge
+
+    
