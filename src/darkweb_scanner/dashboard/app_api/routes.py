@@ -3,9 +3,11 @@
 import os
 import socket
 import ssl
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
 from flask import jsonify, request, send_file
 
 from ...exposure_intel import shodan_search, urlscan_search
@@ -308,3 +310,59 @@ def lookup_ip(ip):
             "created_at": _now_iso(),
         }
     )
+
+@ti_api.route("/export/stix", methods=["GET"])
+@require_api_key
+def export_stix():
+    storage = get_storage()
+    with storage.get_session() as db:
+        rows = (
+            db.query(ThreatIOC)
+            .order_by(ThreatIOC.date_added.desc())
+            .limit(100)
+            .all()
+        )
+    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    result = []
+    for row in rows:
+        ioc_type = (getattr(row, "type", "") or "").strip().lower()
+        indicator = getattr(row, "indicator", "") or ""
+        if "domain" in ioc_type:
+            pattern = f"[domain-name:value = '{indicator}']"
+        elif "ip" in ioc_type:
+            pattern = f"[ipv4-addr:value = '{indicator}']"
+        else:
+            pattern = f"[url:value = '{indicator}']"
+        created = getattr(row, "date_added", None)
+        created_iso = created.isoformat() if hasattr(created, "isoformat") else (created or now)
+        obj = {
+            "type": "indicator",
+            "spec_version": "2.1",
+            "id": f"indicator--{uuid.uuid4()}",
+            "created": created_iso,
+            "pattern": pattern,
+            "pattern_type": "stix",
+            "valid_from": created_iso,
+        }
+        result.append(obj)
+    return jsonify(result)
+
+
+@ti_api.route("/alerts/test", methods=["POST"])
+@require_api_key
+def alerts_test():
+    body = request.get_json(silent=True) or {}
+    webhook_url = (body.get("webhook_url") or "").strip()
+    if not webhook_url:
+        return jsonify({"error": "webhook_url required"}), 400
+    try:
+        resp = requests.post(
+            webhook_url,
+            json={"text": "🚨 Test Alert from Kenya Threat Intel Platform"},
+            timeout=10,
+        )
+        if resp.status_code < 400:
+            return jsonify({"success": True, "status_code": resp.status_code})
+        return jsonify({"success": False, "status_code": resp.status_code}), 502
+    except Exception as exc:
+        return jsonify({"success": False, "error": str(exc)}), 502
