@@ -206,6 +206,8 @@ def create_app() -> Flask:
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(channel_monitor_bp)
     app.register_blueprint(rw_live_bp)
+    from darkweb_scanner.dashboard.app_api import ti_api
+    app.register_blueprint(ti_api)
     app.teardown_appcontext(close_db)
 
     # ── Database: create tables + populate the onion seed list ──

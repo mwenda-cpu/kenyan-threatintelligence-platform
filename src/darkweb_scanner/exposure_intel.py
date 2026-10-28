@@ -3,6 +3,13 @@
 import json
 import os
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 from .dashboard.http_client import safe_fetch
 
 

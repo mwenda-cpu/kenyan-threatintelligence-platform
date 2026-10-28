@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 DOMAIN="${DOMAIN:-}"
@@ -18,9 +18,9 @@ generate_self_signed() {
 }
 
 write_nginx_config() {
-  cat > /etc/nginx/conf.d/darkweb.conf <<EOF
+  cat > /etc/nginx/conf.d/app_vhost.conf <<EOF
 server {
-    listen 80 default_server;
+    listen 80;
     server_name _;
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
     location / {
@@ -67,7 +67,7 @@ server {
 EOF
 
   if [[ -n "$WWW_DOMAIN" ]]; then
-    cat >> /etc/nginx/conf.d/darkweb.conf <<EOF
+    cat >> /etc/nginx/conf.d/app_vhost.conf <<EOF
 server {
     listen 80;
     server_name ${WWW_DOMAIN} www.${WWW_DOMAIN} osintph.net www.osintph.net;
@@ -115,7 +115,7 @@ EOF
 
   # ── THREATWATCH vhost ────────────────────────────────────────────────────────
   if [[ -n "$THREATWATCH_DOMAIN" && -f "$CERT_DIR/threatwatch-cert.pem" ]]; then
-    cat >> /etc/nginx/conf.d/darkweb.conf <<EOF
+    cat >> /etc/nginx/conf.d/app_vhost.conf <<EOF
 server {
     listen 80;
     server_name ${THREATWATCH_DOMAIN};
@@ -201,7 +201,7 @@ EOF
   # ── end THREATWATCH ──────────────────────────────────────────────────────────
 
   if [[ -f "$CERT_DIR/webcheck-cert.pem" ]]; then
-    cat >> /etc/nginx/conf.d/darkweb.conf <<WCEOF
+    cat >> /etc/nginx/conf.d/app_vhost.conf <<WCEOF
 server {
     listen 80;
     server_name webcheck.${DOMAIN#*.};
