@@ -241,6 +241,27 @@ def create_app() -> Flask:
     except Exception as _exc:  # noqa: BLE001 - auto-ingest is best-effort
         logging.warning("KE auto-ingest skipped at startup: %s", _exc)
 
+    # Suricata log ingestion (DDoS monitoring) every 15 seconds.
+    try:
+        import sys
+        import threading
+        import time
+        from .suricata_parser import process_suricata_alerts
+
+        def _suricata_loop():
+            while True:
+                try:
+                    process_suricata_alerts(get_storage())
+                except Exception as e:
+                    print(f"[Suricata] Error: {e}", flush=True)
+                time.sleep(15)
+
+        threading.Thread(target=_suricata_loop, daemon=True).start()
+        print("[Suricata] Background parser thread started.", flush=True)
+        print("[Suricata] thread started", file=sys.stderr, flush=True)
+    except Exception as _exc:  # noqa: BLE001
+        logging.warning("Suricata ingest thread not started: %s", _exc)
+
     @app.route("/")
     def root():
         if session.get("logged_in"):

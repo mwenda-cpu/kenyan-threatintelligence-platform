@@ -1,0 +1,3 @@
+alert tcp any any -> $HOME_NET 8080 (msg:"Possible HTTP DDoS Flood"; flow:stateless; threshold: type both, track by_src, count 50, seconds 5; sid:1000001; rev:1;)
+alert tcp any any -> $HOME_NET 80 (msg:"Possible HTTP DDoS Flood"; flow:stateless; threshold: type both, track by_src, count 50, seconds 5; sid:1000002; rev:1;)
+alert tcp any any -> $HOME_NET 443 (msg:"Possible HTTPS DDoS Flood"; flow:stateless; threshold: type both, track by_src, count 50, seconds 5; sid:1000003; rev:1;)

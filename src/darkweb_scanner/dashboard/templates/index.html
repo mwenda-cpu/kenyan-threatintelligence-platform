@@ -618,6 +618,7 @@
   <nav class="main-nav">
   <a href="#" class="nav-item active" data-tab="dashboard">Dashboard</a>
   <a href="#" class="nav-item" data-tab="soc-integrations">SOC Integrations</a>
+  <a href="#" class="nav-item" data-tab="network-alerts">Network Alerts</a>
 
   <div class="nav-dropdown">
     <button class="nav-item" data-tab="ransomware" onclick="switchTab('ransomware', event)">Intelligence <span class="caret">▾</span></button>
@@ -1963,6 +1964,25 @@
             <p style="color:var(--muted);font-size:.83rem;margin-top:8px">See API.md in the repository root for the full list of endpoints.</p>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+  <div class="tab-panel" id="panel-network-alerts">
+    <div class="panel">
+      <div class="panel-header"><h2>Network Alerts</h2></div>
+      <div class="panel-body">
+        <p style="color:var(--muted);font-size:.83rem;margin-bottom:12px">Suricata DDoS detection alerts.</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Time</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Alert Type</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Source IP</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Destination IP</th>
+            </tr>
+          </thead>
+          <tbody id="ddos-alerts-table"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -3352,6 +3372,40 @@
     } catch(e) { el.innerHTML = '<p style="color:var(--red)">Error loading exposure data.</p>'; }
   }
   window.loadExposure = loadExposure;
+
+  async function loadNetworkAlerts() {
+    const table = document.getElementById('ddos-alerts-table');
+    if (!table) return;
+    const key = prompt('Enter your TI_API_KEY', '');
+    if (!key) { table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">API key required.</td></tr>'; return; }
+    try {
+      const res = await fetch('/api/v1/threats?keyword=DDoS', { headers: { 'X-API-Key': key } });
+      const data = await res.json();
+      const rows = Array.isArray(data) ? data : (data.value || []);
+      table.innerHTML = '';
+      if (!rows.length) {
+        table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">No DDoS alerts found.</td></tr>';
+        return;
+      }
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        const urlStr = r.url || '';
+        let src = '-', dst = '-';
+        const m = urlStr.match(/DDoS:\s*([^\->]+)\s*->\s*(.+)/);
+        if (m) { src = m[1].trim(); dst = m[2].trim(); }
+        tr.innerHTML =
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.found_at || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.keyword || 'DDoS')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(src)+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(dst)+'</td>';
+        table.appendChild(tr);
+      });
+    } catch (e) {
+      console.error('[Network Alerts] fetch failed', e);
+      table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--red)">Error loading alerts.</td></tr>';
+    }
+  }
+  window.loadNetworkAlerts = loadNetworkAlerts;
 
   async function changePassword() {
     const body = { current_password: document.getElementById('currentPw').value, new_password: document.getElementById('newPw').value, confirm_password: document.getElementById('confirmPw').value };
@@ -6721,7 +6775,8 @@
     'exposure':       'loadExposure',
     'channel-monitor':'cmInit',
     'dashboard':      'fetchStats',
-    'crawls':         'fetchStats'
+    'crawls':         'fetchStats',
+    'network-alerts': 'loadNetworkAlerts'
   };
   const ALIAS = {
     'threat-actors':'panel-threatactors', 'ioc-feed':'panel-iocfeed',
