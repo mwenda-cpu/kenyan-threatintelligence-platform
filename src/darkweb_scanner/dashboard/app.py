@@ -5,6 +5,7 @@ Flask application factory — wires up auth + dashboard blueprints.
 import json
 import logging
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -266,9 +267,9 @@ def create_app() -> Flask:
 
     # Suricata log ingestion (DDoS monitoring) every 15 seconds.
     try:
-        import sys
         import threading
         import time
+
         from .suricata_parser import process_suricata_alerts
 
         def _suricata_loop():
