@@ -1050,6 +1050,25 @@ def api_exposure_urlscan():
     return jsonify(urlscan_search(query))
 
 
+@dashboard_bp.route("/api/osint/username", methods=["GET"])
+@require_login
+def api_osint_username_query():
+    from flask import jsonify, request
+
+    from ..username_search import search_username
+    q = request.args.get("q", "")
+    return jsonify(search_username(q))
+
+
+@dashboard_bp.route("/api/osint/username/<username>", methods=["GET"])
+@require_login
+def api_osint_username_path(username):
+    from flask import jsonify
+
+    from ..username_search import search_username
+    return jsonify(search_username(username))
+
+
 @dashboard_bp.route("/api/sessions", methods=["GET"])
 @require_login
 def api_sessions():
