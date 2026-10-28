@@ -297,3 +297,8 @@ See the [LICENSE](LICENSE) file for the full text.
 
 Issues and feature requests: https://github.com/mwenda-cpu/kenyan-threatintelligence-platform/issues
 
+
+## External API
+See API.md for the read-only Threat Intelligence REST API (auth header, endpoints, curl examples).
+Rate limiting: none by default.
+All endpoints return JSON.
