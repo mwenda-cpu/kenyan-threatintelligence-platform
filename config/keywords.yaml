@@ -234,3 +234,17 @@ keywords:
   JKIA: {severity: high, category: infrastructure}
   "Wilson Airport": {severity: high, category: infrastructure}
   "Kenya Railways": {severity: high, category: infrastructure}
+
+  # Financial & fintech context
+  "SIM swap": {severity: critical, category: fintech}
+  "SIM-swap": {severity: critical, category: fintech}
+  "agent fraud": {severity: high, category: fintech}
+  "B2C reversal": {severity: high, category: fintech}
+  "M-Pesa API": {severity: high, category: fintech}
+  "Fuliza": {severity: high, category: fintech}
+  "mobile money fraud": {severity: high, category: fintech}
+  "CBK": {severity: critical, category: regulator}
+  "pesa": {severity: medium, category: fintech}
+  "mpesa agent": {severity: high, category: fintech}
+  "hacking eCitizen": {severity: critical, category: government}
+  "IFMIS": {severity: critical, category: government}

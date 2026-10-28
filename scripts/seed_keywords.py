@@ -27,6 +27,11 @@ KENYAN_KEYWORDS = {
         "KCB", "Equity Bank", "Co-operative Bank", "NCBA",
         "Absa Kenya", "Stanbic", "Standard Chartered Kenya", "DTB",
     ],
+    "Financial & Fintech": [
+        "SIM swap", "SIM-swap", "agent fraud", "B2C reversal", "M-Pesa API",
+        "Fuliza", "mobile money fraud", "CBK", "pesa", "mpesa agent",
+        "hacking eCitizen", "IFMIS",
+    ],
 }
 
 

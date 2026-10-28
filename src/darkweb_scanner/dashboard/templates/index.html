@@ -617,6 +617,7 @@
   </div>
   <nav class="main-nav">
   <a href="#" class="nav-item active" data-tab="dashboard">Dashboard</a>
+  <a href="#" class="nav-item" data-tab="soc-integrations">SOC Integrations</a>
 
   <div class="nav-dropdown">
     <button class="nav-item" data-tab="ransomware" onclick="switchTab('ransomware', event)">Intelligence <span class="caret">▾</span></button>
@@ -1935,8 +1936,37 @@
       </div>
     </div>
   </div>
-</main>
 
+  <div class="tab-panel" id="panel-soc-integrations">
+    <div class="panel">
+      <div class="panel-header"><h2>SOC Integrations</h2></div>
+      <div class="panel-body">
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-header"><h3>Webhook Alerting</h3></div>
+          <div class="panel-body">
+            <input type="text" id="webhookUrl" placeholder="https://hooks.slack.com/services/..." style="width:100%;margin-bottom:8px"/>
+            <button class="btn btn-primary" onclick="sendTestAlert()">Send Test Alert</button>
+            <div id="webhookResult" style="margin-top:8px;color:var(--muted);font-size:.83rem"></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-header"><h3>STIX 2.1 Export</h3></div>
+          <div class="panel-body">
+            <p style="color:var(--muted);font-size:.83rem;margin-bottom:12px">Export the latest 100 IOCs in STIX 2.1 format for MISP, TheHive, or Splunk.</p>
+            <button class="btn btn-primary" onclick="downloadStix()">Download STIX Bundle</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><h3>API Credentials</h3></div>
+          <div class="panel-body">
+            <p style="color:var(--muted);font-size:.83rem">API Endpoint Base: <code>http://localhost/api/v1/</code></p>
+            <p style="color:var(--muted);font-size:.83rem;margin-top:8px">See API.md in the repository root for the full list of endpoints.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
 <div id="toast"></div>
 
 <script>
@@ -7001,6 +7031,47 @@
 
 
 })();
+</script>
+<script>
+  async function sendTestAlert() {
+    const url = document.getElementById('webhookUrl').value;
+    const key = prompt("Enter your TI_API_KEY");
+    const result = document.getElementById('webhookResult');
+    try {
+      const res = await fetch('/api/v1/alerts/test', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-API-Key': key},
+        body: JSON.stringify({webhook_url: url})
+      });
+      const data = await res.json();
+      if (res.ok) {
+        result.textContent = 'Success: ' + JSON.stringify(data);
+        result.style.color = 'var(--green)';
+      } else {
+        result.textContent = 'Error: ' + JSON.stringify(data);
+        result.style.color = 'var(--red)';
+      }
+    } catch (e) {
+      result.textContent = 'Error: ' + e.message;
+      result.style.color = 'var(--red)';
+    }
+  }
+
+  async function downloadStix() {
+    const key = prompt("Enter your TI_API_KEY");
+    try {
+      const res = await fetch('/api/v1/export/stix', { headers: {'X-API-Key': key} });
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'kenya_ti_stix_bundle.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      alert('Download failed: ' + e.message);
+    }
+  }
 </script>
 </body>
 </html>
