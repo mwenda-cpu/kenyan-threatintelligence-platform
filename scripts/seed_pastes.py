@@ -8,7 +8,7 @@ Idempotent: uses ON CONFLICT DO NOTHING on seen_pastes (source, paste_id unique)
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -47,7 +47,7 @@ def main() -> int:
         # Mark paste as seen (idempotent via unique constraint)
         try:
             storage.mark_paste_seen(source, paste_id, url, had_hits=True)
-        except Exception as exc:
+        except Exception:
             # ON CONFLICT DO NOTHING — if already seen, just continue
             skipped += 1
             continue

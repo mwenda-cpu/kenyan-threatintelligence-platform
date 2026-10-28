@@ -619,6 +619,8 @@
   <a href="#" class="nav-item active" data-tab="dashboard">Dashboard</a>
   <a href="#" class="nav-item" data-tab="soc-integrations">SOC Integrations</a>
   <a href="#" class="nav-item" data-tab="network-alerts">Network Alerts</a>
+  <a href="#" class="nav-item" data-tab="ke-cirt-advisories">KE-CIRT Advisories</a>
+  <a href="#" class="nav-item" data-tab="audit-log">Audit Log</a>
 
   <div class="nav-dropdown">
     <button class="nav-item" data-tab="ransomware" onclick="switchTab('ransomware', event)">Intelligence <span class="caret">▾</span></button>
@@ -1972,6 +1974,15 @@
       <div class="panel-header"><h2>Network Alerts</h2></div>
       <div class="panel-body">
         <p style="color:var(--muted);font-size:.83rem;margin-bottom:12px">Suricata DDoS detection alerts.</p>
+        <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center">
+          <label for="sector-filter" style="color:var(--muted);font-size:.82rem">Sector:</label>
+          <select id="sector-filter" onchange="loadNetworkAlerts()" style="padding:4px 8px;font-size:.82rem;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px">
+            <option value="all">All Sectors</option>
+            <option value="fintech">Fintech</option>
+            <option value="government">Government</option>
+            <option value="banking">Banking</option>
+          </select>
+        </div>
         <table style="width:100%;border-collapse:collapse;margin-top:8px">
           <thead>
             <tr>
@@ -1982,6 +1993,45 @@
             </tr>
           </thead>
           <tbody id="ddos-alerts-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="tab-panel" id="panel-ke-cirt-advisories">
+    <div class="panel">
+      <div class="panel-header"><h2>KE-CIRT / CAK / CBK Advisories</h2></div>
+      <div class="panel-body">
+        <p style="color:var(--muted);font-size:.83rem;margin-bottom:12px">Kenya-specific advisories ingested into the platform for contextualized intelligence.</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Published</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Source</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Severity</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Title</th>
+            </tr>
+          </thead>
+          <tbody id="ke-cirt-advisories-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="tab-panel" id="panel-audit-log">
+    <div class="panel">
+      <div class="panel-header"><h2>Audit Log</h2></div>
+      <div class="panel-body">
+        <p style="color:var(--muted);font-size:.83rem;margin-bottom:12px">Audit trail of sensitive API actions (STIX export, webhook tests, report downloads).</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Time</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Actor</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Action</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Target</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">IP</th>
+            </tr>
+          </thead>
+          <tbody id="audit-log-table"></tbody>
         </table>
       </div>
     </div>
@@ -3378,8 +3428,16 @@
     if (!table) return;
     const key = prompt('Enter your TI_API_KEY', '');
     if (!key) { table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">API key required.</td></tr>'; return; }
+    const sectorSel = document.getElementById('sector-filter');
+    const sector = sectorSel ? sectorSel.value : 'all';
+    let url = '/api/v1/threats';
+    if (sector && sector !== 'all') {
+      url += '?sector=' + encodeURIComponent(sector);
+    } else {
+      url += '?keyword=DDoS';
+    }
     try {
-      const res = await fetch('/api/v1/threats?keyword=DDoS', { headers: { 'X-API-Key': key } });
+      const res = await fetch(url, { headers: { 'X-API-Key': key } });
       const data = await res.json();
       const rows = Array.isArray(data) ? data : (data.value || []);
       table.innerHTML = '';
@@ -3406,6 +3464,86 @@
     }
   }
   window.loadNetworkAlerts = loadNetworkAlerts;
+
+  async function loadKecirtAdvisories() {
+    const table = document.getElementById('ke-cirt-advisories-table');
+    if (!table) return;
+    const key = prompt('Enter your TI_API_KEY', '');
+    if (!key) {
+      table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">API key required.</td></tr>';
+      return;
+    }
+    try {
+      const res = await fetch('/api/v1/advisories', { headers: { 'X-API-Key': key } });
+      const data = await res.json();
+      const rows = Array.isArray(data) ? data : [];
+      table.innerHTML = '';
+      if (!rows.length) {
+        table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">No advisories found.</td></tr>';
+        return;
+      }
+      const severityClass = {
+        critical: 'badge-critical',
+        high: 'badge-high',
+        medium: 'badge-medium',
+        low: 'badge-disrupted',
+      };
+      rows.forEach(r => {
+        const sev = String(r.severity || '').toLowerCase();
+        const cls = severityClass[sev] || 'badge-disrupted';
+        const published = r.published_at
+          ? new Date(r.published_at.endsWith('Z') ? r.published_at : r.published_at + 'Z').toLocaleString()
+          : '-';
+        table.innerHTML +=
+          '<tr>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(published)+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.source || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)"><span class="badge '+cls+'">'+esc(sev)+'</span></td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+(r.url && r.url.startsWith("file:///")
+            ? '<a href="/api/v1/advisories/'+escAttr(r.id)+'/download" target="_blank" style="color:var(--accent);text-decoration:underline">'+esc(r.title)+'</a>'
+            : '<a href="'+escAttr(r.url)+'" target="_blank" style="color:var(--accent);text-decoration:underline">'+esc(r.title)+'</a>')+'</td>' +
+          '</tr>';
+      });
+    } catch (e) {
+      console.error('[KE-CIRT] fetch failed', e);
+      table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--red)">Error loading advisories.</td></tr>';
+    }
+  }
+  window.loadKecirtAdvisories = loadKecirtAdvisories;
+
+  async function loadAuditLog() {
+    const table = document.getElementById('audit-log-table');
+    if (!table) return;
+    const key = prompt('Enter your TI_API_KEY', '');
+    if (!key) {
+      table.innerHTML = '<tr><td colspan="5" style="padding:8px;color:var(--muted)">API key required.</td></tr>';
+      return;
+    }
+    try {
+      const res = await fetch('/api/v1/audit', { headers: { 'X-API-Key': key } });
+      const data = await res.json();
+      const rows = Array.isArray(data) ? data : [];
+      table.innerHTML = '';
+      if (!rows.length) {
+        table.innerHTML = '<tr><td colspan="5" style="padding:8px;color:var(--muted)">No audit entries found.</td></tr>';
+        return;
+      }
+      rows.forEach(r => {
+        table.innerHTML +=
+          '<tr>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.created_at || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.actor || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.action || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.target || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.ip || '-')+'</td>' +
+          '</tr>';
+      });
+    } catch (e) {
+      console.error('[Audit Log] fetch failed', e);
+      table.innerHTML = '<tr><td colspan="5" style="padding:8px;color:var(--red)">Error loading audit log.</td></tr>';
+    }
+  }
+  window.loadAuditLog = loadAuditLog;
 
   async function changePassword() {
     const body = { current_password: document.getElementById('currentPw').value, new_password: document.getElementById('newPw').value, confirm_password: document.getElementById('confirmPw').value };
@@ -6776,7 +6914,9 @@
     'channel-monitor':'cmInit',
     'dashboard':      'fetchStats',
     'crawls':         'fetchStats',
-    'network-alerts': 'loadNetworkAlerts'
+    'network-alerts': 'loadNetworkAlerts',
+    'ke-cirt-advisories': 'loadKecirtAdvisories',
+    'audit-log': 'loadAuditLog'
   };
   const ALIAS = {
     'threat-actors':'panel-threatactors', 'ioc-feed':'panel-iocfeed',

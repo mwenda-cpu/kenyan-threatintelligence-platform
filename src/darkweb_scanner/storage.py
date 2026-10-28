@@ -425,6 +425,37 @@ class CVEAlert(Base):
     kenyan_asset = relationship("KenyanAsset", foreign_keys=[asset_id])
 
 
+# ── KE-CIRT Advisories ────────────────────────────────────────────────────
+
+
+class KECIRTAdvisory(Base):
+    __tablename__ = "ke_cirt_advisories"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(500), nullable=False)
+    url = Column(String(1000))
+    published_at = Column(DateTime)
+    summary = Column(Text)
+    severity = Column(String(50))  # low / medium / high / critical
+    source = Column(String(100))  # KE-CIRT/CC / CAK / CBK
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True)
+    actor = Column(String(200))  # "api-key:<prefix>" or "user:<username>"
+    action = Column(String(100))  # e.g. "export_stix", "send_webhook", "download_report"
+    target = Column(String(500))  # the specific IOC/URL/session
+    ip = Column(String(64))
+    user_agent = Column(String(500))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── Quick Scan Models ───────────────────────────────────────────────────────────
 
 class QuickScanSession(Base):

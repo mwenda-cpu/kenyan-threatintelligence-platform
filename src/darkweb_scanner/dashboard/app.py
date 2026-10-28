@@ -221,6 +221,29 @@ def create_app() -> Flask:
         start()
     print("[startup] scheduler.start() invoked", flush=True)
 
+    # ── KE-CIRT advisories ingestion (once at startup, then every 6 hours) ──
+    try:
+        import threading
+        import time
+
+        if str(_REPO_ROOT) not in sys.path:
+            sys.path.insert(0, str(_REPO_ROOT))
+        from scripts.fetch_ke_cirt import fetch_and_store_advisories
+
+        def _ke_cirt_loop():
+            while True:
+                try:
+                    fetch_and_store_advisories()
+                    print("[KE-CIRT] advisories refreshed.", flush=True)
+                except Exception as e:
+                    print(f"[KE-CIRT] ingestion error: {e}", flush=True)
+                time.sleep(6 * 3600)
+
+        threading.Thread(target=_ke_cirt_loop, daemon=True).start()
+        print("[KE-CIRT] advisories ingestion thread started.", flush=True)
+    except Exception as _exc:
+        logging.warning("KE-CIRT ingestion thread not started: %s", _exc)
+
     # Cap request bodies (report uploads); the route enforces the tighter
     # per-file limit itself.
     app.config["MAX_CONTENT_LENGTH"] = KE_REPORT_MAX_BYTES + (1024 * 1024)

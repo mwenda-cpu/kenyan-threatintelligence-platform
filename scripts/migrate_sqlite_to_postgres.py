@@ -6,10 +6,13 @@ Run inside the dashboard container:
   docker compose cp scripts/migrate_sqlite_to_postgres.py dashboard:/tmp/
   docker compose exec -e POSTGRES_PASSWORD=$PG_PASS dashboard python3 /tmp/migrate_sqlite_to_postgres.py
 """
+import os
 import sqlite3
+
 import sqlalchemy
 from sqlalchemy import text
-import os
+
+from darkweb_scanner.storage import Storage
 
 sqlite_path = '/app/data/results.db'
 pg_pass = os.environ.get('POSTGRES_PASSWORD')
@@ -19,7 +22,6 @@ sqlite_conn = sqlite3.connect(sqlite_path)
 sqlite_conn.row_factory = sqlite3.Row
 pg_engine = sqlalchemy.create_engine(pg_url)
 
-from darkweb_scanner.storage import Storage
 s = Storage(pg_url)
 print("✓ Tables created in postgres")
 
