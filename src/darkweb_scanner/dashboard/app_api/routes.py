@@ -11,11 +11,36 @@ import requests
 from flask import jsonify, request, send_file
 
 from ...exposure_intel import shodan_search, urlscan_search
-from ...storage import CrawlSession, KeywordHitRecord, ThreatIOC
+from ...storage import (
+    AuditLog,
+    CrawlSession,
+    KECIRTAdvisory,
+    KeywordHitRecord,
+    ThreatIOC,
+)
 from .. import storage_helper as _storage_helper
 from . import ti_api
+from .audit import write_audit
 from .auth import require_api_key
 from .schemas import serialize_hit, serialize_ioc, serialize_session
+
+# Sector keyword lists used by the ?sector= filter on /api/v1/threats.
+# Additive only — when no sector param is supplied, behavior is unchanged.
+SECTOR_KEYWORDS = {
+    "fintech": [
+        "M-Pesa", "Safaricom", "Airtel Money", "Pesalink", "Flutterwave",
+        "Chipper Cash", "SIM swap", "SIM-swap", "agent fraud", "B2C reversal",
+        "M-Pesa API", "Fuliza", "mobile money fraud", "pesa", "mpesa agent",
+    ],
+    "government": [
+        "eCitizen", "KRA", "iTax", "IFMIS", "NTSA", "Huduma",
+        "Ministry of Health", "Ministry of Interior",
+    ],
+    "banking": [
+        "KCB", "Equity Bank", "Co-operative Bank", "NCBA", "Absa Kenya",
+        "Stanbic", "Standard Chartered Kenya", "DTB",
+    ],
+}
 
 
 def get_storage():
@@ -92,6 +117,59 @@ def list_iocs():
             .all()
         )
     return jsonify([serialize_ioc(r) for r in rows])
+
+
+@ti_api.route("/advisories", methods=["GET"])
+@require_api_key
+def list_advisories():
+    storage = get_storage()
+    with storage.get_session() as db:
+        rows = (
+            db.query(KECIRTAdvisory)
+            .order_by(KECIRTAdvisory.published_at.desc())
+            .limit(100)
+            .all()
+        )
+        return jsonify(
+            [
+                {
+                    "id": r.id,
+                    "title": r.title,
+                    "url": r.url,
+                    "published_at": r.published_at.isoformat() if r.published_at else None,
+                    "summary": r.summary,
+                    "severity": r.severity,
+                    "source": r.source,
+                }
+                for r in rows
+            ]
+        )
+
+
+@ti_api.route("/advisories/<int:advisory_id>/download", methods=["GET"])
+@require_api_key
+def download_advisory(advisory_id):
+    storage = get_storage()
+    with storage.get_session() as db:
+        advisory = db.query(KECIRTAdvisory).filter(KECIRTAdvisory.id == advisory_id).first()
+    if advisory is None:
+        return jsonify({"error": "Not found"}), 404
+    url = advisory.url or ""
+    if not url.startswith("file:///"):
+        return jsonify({"error": "Advisory is not a local PDF"}), 400
+    prefix = "file:///app/data/ke_reports/"
+    filename = url[len(prefix):] if url.startswith(prefix) else url.replace("file:///", "", 1)
+    path = Path(os.getenv("DATA_DIR", "/app/data")) / "ke_reports" / filename
+    if not path.exists():
+        return jsonify({"error": "PDF file not found"}), 404
+    write_audit(
+        actor="api-key:" + (request.headers.get("X-API-Key") or "")[:6],
+        action="download_advisory",
+        target=f"advisory_id={advisory_id}",
+        ip=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    return send_file(str(path), mimetype="application/pdf", as_attachment=False)
 
 
 @ti_api.route("/iocs/<path:ioc_value>", methods=["GET"])
@@ -179,15 +257,56 @@ def session_hits(session_id):
 def list_threats():
     storage = get_storage()
     keyword = request.args.get("keyword")
+    sector = (request.args.get("sector") or "").strip().lower()
     try:
         limit = int(request.args.get("limit", 100))
     except (TypeError, ValueError):
         limit = 100
     if keyword:
         rows = storage.get_hits_by_keyword(keyword, limit=limit)
+    elif sector and sector in SECTOR_KEYWORDS:
+        with storage.get_session() as db:
+            rows = (
+                db.query(KeywordHitRecord)
+                .filter(KeywordHitRecord.keyword.in_(SECTOR_KEYWORDS[sector]))
+                .order_by(KeywordHitRecord.found_at.desc())
+                .limit(limit)
+                .all()
+            )
     else:
         rows = storage.get_recent_hits(limit=limit)
     return jsonify([serialize_hit(r) for r in rows])
+
+
+@ti_api.route("/audit", methods=["GET"])
+@require_api_key
+def list_audit():
+    storage = get_storage()
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (TypeError, ValueError):
+        limit = 100
+    with storage.get_session() as db:
+        rows = (
+            db.query(AuditLog)
+            .order_by(AuditLog.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+    return jsonify(
+        [
+            {
+                "id": r.id,
+                "actor": r.actor,
+                "action": r.action,
+                "target": r.target,
+                "ip": r.ip,
+                "user_agent": r.user_agent,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
+    )
 
 
 @ti_api.route("/reports", methods=["GET"])
@@ -216,6 +335,13 @@ def download_report(report_id):
     if report_id < 1 or report_id > len(files):
         return jsonify({"error": "Not found"}), 404
     path = files[report_id - 1]
+    write_audit(
+        actor="api-key:" + (request.headers.get("X-API-Key") or "")[:6],
+        action="download_report",
+        target=f"report_id={report_id}",
+        ip=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
     return send_file(str(path), mimetype="application/pdf", as_attachment=False)
 
 
@@ -345,6 +471,13 @@ def export_stix():
             "valid_from": created_iso,
         }
         result.append(obj)
+    write_audit(
+        actor="api-key:" + (request.headers.get("X-API-Key") or "")[:6],
+        action="export_stix",
+        target=f"count={len(result)}",
+        ip=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
     return jsonify(result)
 
 
@@ -355,6 +488,13 @@ def alerts_test():
     webhook_url = (body.get("webhook_url") or "").strip()
     if not webhook_url:
         return jsonify({"error": "webhook_url required"}), 400
+    write_audit(
+        actor="api-key:" + (request.headers.get("X-API-Key") or "")[:6],
+        action="send_webhook",
+        target=webhook_url,
+        ip=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
     try:
         resp = requests.post(
             webhook_url,

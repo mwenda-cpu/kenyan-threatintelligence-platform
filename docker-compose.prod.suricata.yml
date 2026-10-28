@@ -1,0 +1,21 @@
+# =============================================================================
+#  Production Suricata override — perimeter deployment
+# =============================================================================
+#
+# In production, deploy this override on the institution's perimeter server
+# with the firewall mirroring traffic to the server NIC:
+#
+#   docker-compose -f docker-compose.yml -f docker-compose.prod.suricata.yml up -d suricata
+#
+# network_mode: host lets Suricata bind the host NIC directly so it sees
+# real external traffic instead of Docker's bridge network.
+
+services:
+  suricata:
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    volumes:
+      - ./data/suricata-logs:/var/log/suricata

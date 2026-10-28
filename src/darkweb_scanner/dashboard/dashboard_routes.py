@@ -1,5 +1,10 @@
 """
 Dashboard blueprint — all protected routes.
+
+# AUTH MODEL
+# - All HTML routes: @require_login (session-based, Flask-Login)
+# - All /api/v1/* routes: @require_api_key (X-API-Key header)
+# - Public: /api/v1/health and /api/v1/ only
 """
 
 import json
