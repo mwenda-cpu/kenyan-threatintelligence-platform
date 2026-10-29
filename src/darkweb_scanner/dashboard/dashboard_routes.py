@@ -17,11 +17,22 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
-from flask import Blueprint, Response, jsonify, redirect, render_template, request, session
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
-from ..auth import hash_password, require_login, validate_password_strength
+from ..auth import get_current_user, hash_password, require_login, validate_password_strength
 from ..crawler import CrawlConfig, run_onion_crawl_cycle
-from ..storage import HistoricalAttack
+from ..storage import HistoricalAttack, User
 from .forecaster import forecast_hits
 from .http_client import SafeFetchError, check_host_ssrf, safe_fetch
 from .predictor import calculate_threat_score, threat_level
@@ -100,6 +111,40 @@ def index():
         session.clear()
         return redirect("/login")
     return render_template("index.html", username=session.get("username"), is_admin=user.is_admin)
+
+
+@dashboard_bp.route("/admin/pending_users", methods=["GET"])
+@require_login
+def pending_users():
+    user = get_current_user()
+    if not user or not user.is_admin:
+        flash("Admin access required.", "error")
+        return redirect(url_for("dashboard.index"))
+    storage = get_storage()
+    with storage.get_session() as db:
+        pending = (
+            db.query(User)
+            .filter(User.is_verified.is_(True), User.is_approved.is_(False))
+            .order_by(User.created_at.desc())
+            .all()
+        )
+    return render_template("pending_users.html", pending=pending)
+
+
+@dashboard_bp.route("/admin/approve_user/<int:user_id>", methods=["POST"])
+@require_login
+def approve_user(user_id):
+    user = get_current_user()
+    if not user or not user.is_admin:
+        abort(403)
+    storage = get_storage()
+    with storage.get_session() as db:
+        u = db.query(User).filter(User.id == user_id).first()
+        if u:
+            u.is_approved = True
+            db.commit()
+            flash(f"User {u.username} approved.", "success")
+    return redirect(url_for("dashboard.pending_users"))
 
 
 @dashboard_bp.route("/cve-panel")
