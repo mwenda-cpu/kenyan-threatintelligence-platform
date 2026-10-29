@@ -53,6 +53,10 @@ class User(Base):
     oauth_id = Column(String(255), nullable=True)
     is_admin = Column(Boolean, default=False)
     must_change_password = Column(Boolean, default=False)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    is_approved = Column(Boolean, default=False, nullable=False)
+    verification_token = Column(String(100), nullable=True)
+    verification_sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     last_login = Column(DateTime, nullable=True)
 
@@ -571,6 +575,13 @@ class Storage:
         ("seeds", "attempt_count", "INTEGER DEFAULT 0"),
     )
 
+    _USER_COLUMN_MIGRATIONS = (
+        ("users", "is_verified", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("users", "is_approved", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("users", "verification_token", "VARCHAR(100)"),
+        ("users", "verification_sent_at", "TIMESTAMP"),
+    )
+
     # ── Seeds table ──────────────────────────────────────────────────────────────
     # Imported at class definition time so the model is registered on Base.
     from . import storage_ke as _ke  # noqa: F401
@@ -616,6 +627,23 @@ class Storage:
 
         # ── Seeds table columns ──────────────────────────────────────────
         for table, column, ddl_type in self._SEED_COLUMN_MIGRATIONS:
+            if table not in existing_tables:
+                continue
+            try:
+                cols = {c["name"] for c in inspector.get_columns(table)}
+            except Exception:
+                continue
+            if column in cols:
+                continue
+            try:
+                with self.engine.begin() as conn:
+                    conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {ddl_type}'))
+                logger.info("Migrated: added %s.%s %s", table, column, ddl_type)
+            except Exception as exc:
+                logger.warning("Could not add column %s.%s: %s", table, column, exc)
+
+        # ── Users table columns (email verification + admin approval) ────
+        for table, column, ddl_type in self._USER_COLUMN_MIGRATIONS:
             if table not in existing_tables:
                 continue
             try:
@@ -1005,7 +1033,10 @@ class Storage:
     def create_user(self, username: str, password_hash: str = None,
                     email: str = None, oauth_provider: str = None,
                     oauth_id: str = None, is_admin: bool = False,
-                    must_change_password: bool = False):
+                    must_change_password: bool = False,
+                    is_verified: bool = False, is_approved: bool = False,
+                    verification_token: str = None,
+                    verification_sent_at=None):
         with self.get_session() as session:
             user = User(
                 username=username,
@@ -1015,6 +1046,10 @@ class Storage:
                 oauth_id=oauth_id,
                 is_admin=is_admin,
                 must_change_password=must_change_password,
+                is_verified=is_verified,
+                is_approved=is_approved,
+                verification_token=verification_token,
+                verification_sent_at=verification_sent_at,
             )
             session.add(user)
             session.commit()

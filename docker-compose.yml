@@ -65,7 +65,7 @@ services:
     env_file:
       - .env
     environment:
-      - FLASK_DEBUG=1         
+      - FLASK_DEBUG=1
       - BASE_URL=${BASE_URL}
     volumes:
       - ./src:/app/src
@@ -125,7 +125,6 @@ services:
     networks:
       - scanner_net
 
-  
   # ── Suricata IDS ──────────────────────────────────────────────────────────────
   suricata:
     build:
@@ -157,4 +156,3 @@ networks:
    scanner_net:
     driver: bridge
 
-    

@@ -664,6 +664,9 @@
       <a href="#" data-tab="users">USRS Users</a>
       <a href="#" data-tab="reports">DOC Reports</a>
       <a href="#" data-tab="settings"> Settings</a>
+      {% if is_admin %}
+      <a href="{{ url_for('dashboard.pending_users') }}">Pending Users</a>
+      {% endif %}
     </div>
   </div>
   <div class="nav-dropdown">
@@ -1965,6 +1968,7 @@
           <div class="panel-body">
             <p style="color:var(--muted);font-size:.83rem">API Endpoint Base: <code>http://localhost/api/v1/</code></p>
             <p style="color:var(--muted);font-size:.83rem;margin-top:8px">See API.md in the repository root for the full list of endpoints.</p>
+            <button class="btn btn-danger" onclick="localStorage.removeItem('TI_API_KEY'); alert('API Key cleared from this browser.');">Clear Saved API Key</button>
           </div>
         </div>
       </div>
@@ -2070,6 +2074,17 @@
 <script>
   let isAdmin = {{ 'true' if is_admin else 'false' }};
   let crawlActive = false;
+
+  function getApiKey() {
+    let key = localStorage.getItem("TI_API_KEY");
+    if (!key) {
+      key = prompt("Enter your TI_API_KEY (this will be saved for this browser):");
+      if (key) {
+        localStorage.setItem("TI_API_KEY", key);
+      }
+    }
+    return key;
+  }
 
   document.addEventListener('DOMContentLoaded', () => {
     const tabUsers = document.getElementById('tab-users');
@@ -3463,7 +3478,7 @@
   async function loadNetworkAlerts() {
     const table = document.getElementById('ddos-alerts-table');
     if (!table) return;
-    const key = prompt('Enter your TI_API_KEY', '');
+    const key = getApiKey();
     if (!key) { table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">API key required.</td></tr>'; return; }
     const sectorSel = document.getElementById('sector-filter');
     const sector = sectorSel ? sectorSel.value : 'all';
@@ -3505,7 +3520,7 @@
   async function loadKecirtAdvisories() {
     const table = document.getElementById('ke-cirt-advisories-table');
     if (!table) return;
-    const key = prompt('Enter your TI_API_KEY', '');
+    const key = getApiKey();
     if (!key) {
       table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">API key required.</td></tr>';
       return;
@@ -3551,7 +3566,7 @@
   async function loadAuditLog() {
     const table = document.getElementById('audit-log-table');
     if (!table) return;
-    const key = prompt('Enter your TI_API_KEY', '');
+    const key = getApiKey();
     if (!key) {
       table.innerHTML = '<tr><td colspan="5" style="padding:8px;color:var(--muted)">API key required.</td></tr>';
       return;
@@ -7362,7 +7377,7 @@
 <script>
   async function sendTestAlert() {
     const url = document.getElementById('webhookUrl').value;
-    const key = prompt("Enter your TI_API_KEY");
+    const key = getApiKey();
     const result = document.getElementById('webhookResult');
     try {
       const res = await fetch('/api/v1/alerts/test', {
@@ -7385,7 +7400,7 @@
   }
 
   async function downloadStix() {
-    const key = prompt("Enter your TI_API_KEY");
+    const key = getApiKey();
     try {
       const res = await fetch('/api/v1/export/stix', { headers: {'X-API-Key': key} });
       const blob = await res.blob();
