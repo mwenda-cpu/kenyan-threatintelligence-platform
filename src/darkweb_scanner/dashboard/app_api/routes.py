@@ -14,6 +14,7 @@ from ...exposure_intel import shodan_search, urlscan_search
 from ...storage import (
     AuditLog,
     CrawlSession,
+    FintechWatchlist,
     KECIRTAdvisory,
     KeywordHitRecord,
     ThreatIOC,
@@ -506,3 +507,106 @@ def alerts_test():
         return jsonify({"success": False, "status_code": resp.status_code}), 502
     except Exception as exc:
         return jsonify({"success": False, "error": str(exc)}), 502
+
+
+# ── Fintech Watchlist Lookup ──────────────────────────────────────────────
+
+
+@ti_api.route("/fintech/watchlist", methods=["POST"])
+@require_api_key
+def fintech_watchlist():
+    """Add an entry to the fintech watchlist."""
+    storage = get_storage()
+    body = request.get_json(silent=True) or {}
+    identifier = (body.get("identifier") or "").strip()
+    identifier_type = (body.get("identifier_type") or "").strip()
+    threat_type = (body.get("threat_type") or "").strip()
+    source = (body.get("source") or "").strip()
+    confidence = body.get("confidence", 70)
+
+    if not identifier or not identifier_type:
+        return jsonify({"error": "identifier and identifier_type required"}), 400
+
+    with storage.get_session() as db:
+        row = FintechWatchlist(
+            identifier=identifier,
+            identifier_type=identifier_type,
+            threat_type=threat_type,
+            source=source,
+            confidence=int(confidence),
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return jsonify(
+            {
+                "id": row.id,
+                "identifier": row.identifier,
+                "identifier_type": row.identifier_type,
+                "threat_type": row.threat_type,
+                "source": row.source,
+                "confidence": row.confidence,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+        )
+
+
+@ti_api.route("/fintech/lookup", methods=["GET"])
+@require_api_key
+def fintech_lookup():
+    """Look up whether an identifier is on the fintech watchlist."""
+    storage = get_storage()
+    identifier = (request.args.get("identifier") or "").strip()
+    if not identifier:
+        return jsonify({"error": "identifier query param required"}), 400
+    with storage.get_session() as db:
+        row = (
+            db.query(FintechWatchlist)
+            .filter(FintechWatchlist.identifier == identifier)
+            .first()
+        )
+    if row is None:
+        return jsonify({"error": "Identifier not found in threat watchlist"}), 404
+    return jsonify(
+        {
+            "id": row.id,
+            "identifier": row.identifier,
+            "identifier_type": row.identifier_type,
+            "threat_type": row.threat_type,
+            "source": row.source,
+            "confidence": row.confidence,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+    )
+
+
+@ti_api.route("/fintech/watchlist", methods=["GET"])
+@require_api_key
+def fintech_watchlist_list():
+    """List all fintech watchlist entries."""
+    storage = get_storage()
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (TypeError, ValueError):
+        limit = 100
+    with storage.get_session() as db:
+        rows = (
+            db.query(FintechWatchlist)
+            .order_by(FintechWatchlist.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+    return jsonify(
+        [
+            {
+                "id": r.id,
+                "identifier": r.identifier,
+                "identifier_type": r.identifier_type,
+                "threat_type": r.threat_type,
+                "source": r.source,
+                "confidence": r.confidence,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
+    )

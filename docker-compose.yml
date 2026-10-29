@@ -65,9 +65,7 @@ services:
     env_file:
       - .env
     environment:
-      - FLASK_DEBUG=1
-      - MAILGUN_API_KEY=${MAILGUN_API_KEY}
-      - MAILGUN_DOMAIN=${MAILGUN_DOMAIN}
+      - FLASK_DEBUG=1         
       - BASE_URL=${BASE_URL}
     volumes:
       - ./src:/app/src

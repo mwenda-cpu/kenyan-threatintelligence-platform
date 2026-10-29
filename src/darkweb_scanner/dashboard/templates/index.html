@@ -619,6 +619,7 @@
   <a href="#" class="nav-item active" data-tab="dashboard">Dashboard</a>
   <a href="#" class="nav-item" data-tab="soc-integrations">SOC Integrations</a>
   <a href="#" class="nav-item" data-tab="network-alerts">Network Alerts</a>
+  <a href="#" class="nav-item" data-tab="fintech-correlation">Fintech Correlation</a>
   <a href="#" class="nav-item" data-tab="ke-cirt-advisories">KE-CIRT Advisories</a>
   <a href="#" class="nav-item" data-tab="audit-log">Audit Log</a>
 
@@ -1997,6 +1998,33 @@
       </div>
     </div>
   </div>
+  <div class="tab-panel" id="panel-fintech-correlation">
+    <div class="panel">
+      <div class="panel-header"><h2>Fintech Threat Watchlist</h2></div>
+      <div class="panel-body">
+        <p style="color:var(--muted);font-size:.83rem;margin-bottom:12px">Fintech Threat Watchlist: This module allows financial institutions to query suspicious IPs and phone numbers against our Dark Web and KE-CIRT watchlist.</p>
+        <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center">
+          <input type="text" id="fintech-lookup" placeholder="Enter IP or phone to look up" style="flex:1;padding:6px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px"/>
+          <button class="btn btn-primary" onclick="loadFintechCorrelation()">Lookup</button>
+          <span id="fintech-count" style="color:var(--muted);font-size:.82rem;margin-left:auto"></span>
+        </div>
+        <div id="fintech-alert" style="margin:8px 0;padding:8px 12px;border-radius:4px;display:none;font-size:.83rem"></div>
+        <table style="width:100%;border-collapse:collapse;margin-top:8px">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Identifier</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Type</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Threat Type</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Source</th>
+              <th style="text-align:center;padding:8px;border-bottom:1px solid var(--border)">Confidence</th>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Created</th>
+            </tr>
+          </thead>
+          <tbody id="fintech-watchlist-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
   <div class="tab-panel" id="panel-ke-cirt-advisories">
     <div class="panel">
       <div class="panel-header"><h2>KE-CIRT / CAK / CBK Advisories</h2></div>
@@ -2070,6 +2098,15 @@
       const d = new Date(iso.includes('T') ? (iso.endsWith('Z') ? iso : iso + 'Z') : iso);
       return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     } catch(e) { return iso; }
+  }
+  function getApiKey() {
+    let key = localStorage.getItem('ti_api_key');
+    if (!key) {
+      key = prompt('Enter your TI_API_KEY', '');
+      if (!key) return null;
+      localStorage.setItem('ti_api_key', key);
+    }
+    return key;
   }
   function toast(msg, type = 'success') {
     const t = document.getElementById('toast');
@@ -3544,6 +3581,100 @@
     }
   }
   window.loadAuditLog = loadAuditLog;
+
+  async function loadFintechCorrelation() {
+    const table = document.getElementById('fintech-watchlist-table');
+    const countEl = document.getElementById('fintech-count');
+    const alertEl = document.getElementById('fintech-alert');
+    const input = document.getElementById('fintech-lookup');
+    const query = (input && input.value) ? input.value.trim() : '';
+    if (!table) return;
+    table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--muted)">Loading...</td></tr>';
+    if (alertEl) alertEl.style.display = 'none';
+    if (countEl) countEl.textContent = '';
+    const key = getApiKey();
+    if (!key) {
+      table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--muted)">API key required.</td></tr>';
+      return;
+    }
+    try {
+      const url = query
+        ? '/api/v1/fintech/lookup?identifier=' + encodeURIComponent(query)
+        : '/api/v1/fintech/watchlist';
+      const res = await fetch(url, { headers: { 'X-API-Key': key } });
+      if (query) {
+        if (res.status === 404) {
+          table.innerHTML = '';
+          if (countEl) countEl.textContent = '';
+          showFintechAlert(query, false);
+          return;
+        }
+        if (!res.ok) {
+          table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--red)">Error loading watchlist.</td></tr>';
+          return;
+        }
+        const row = await res.json();
+        table.innerHTML = '';
+        table.innerHTML +=
+          '<tr>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(row.identifier || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(row.identifier_type || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(row.threat_type || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(row.source || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border);text-align:center">'+esc(row.confidence || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(row.created_at || '-')+'</td>' +
+          '</tr>';
+        showFintechAlert(query, true, row.threat_type);
+        if (countEl) countEl.textContent = '1 entry';
+        return;
+      }
+      if (!res.ok) {
+        table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--red)">Error loading watchlist.</td></tr>';
+        return;
+      }
+      const rows = await res.json();
+      table.innerHTML = '';
+      if (!rows.length) {
+        table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--muted)">No watchlist entries found.</td></tr>';
+        if (countEl) countEl.textContent = '0 entries';
+        return;
+      }
+      rows.forEach(r => {
+        table.innerHTML +=
+          '<tr>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.identifier || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.identifier_type || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.threat_type || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.source || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border);text-align:center">'+esc(r.confidence || '-')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.created_at || '-')+'</td>' +
+          '</tr>';
+      });
+      if (countEl) countEl.textContent = rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies');
+    } catch (e) {
+      console.error('[Fintech] fetch failed', e);
+      table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--red)">Error loading watchlist.</td></tr>';
+    }
+  }
+
+  function showFintechAlert(identifier, detected, threatType) {
+    const el = document.getElementById('fintech-alert');
+    if (!el) return;
+    if (detected) {
+      el.style.display = 'block';
+      el.style.background = 'rgba(63,185,80,.12)';
+      el.style.border = '1px solid rgba(63,185,80,.25)';
+      el.style.color = '#3fb950';
+      el.textContent = '\u26A0 THREAT DETECTED: ' + esc(identifier) + ' is flagged for ' + esc(threatType) + '.';
+    } else {
+      el.style.display = 'block';
+      el.style.background = 'rgba(139,148,158,.12)';
+      el.style.border = '1px solid var(--border)';
+      el.style.color = '#8b949e';
+      el.textContent = '\u2705 Clean: No known threats found for this identifier.';
+    }
+  }
+  window.loadFintechCorrelation = loadFintechCorrelation;
 
   async function changePassword() {
     const body = { current_password: document.getElementById('currentPw').value, new_password: document.getElementById('newPw').value, confirm_password: document.getElementById('confirmPw').value };
@@ -6916,7 +7047,8 @@
     'crawls':         'fetchStats',
     'network-alerts': 'loadNetworkAlerts',
     'ke-cirt-advisories': 'loadKecirtAdvisories',
-    'audit-log': 'loadAuditLog'
+    'audit-log': 'loadAuditLog',
+    'fintech-correlation': 'loadFintechCorrelation',
   };
   const ALIAS = {
     'threat-actors':'panel-threatactors', 'ioc-feed':'panel-iocfeed',

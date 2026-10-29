@@ -15,6 +15,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -439,6 +440,38 @@ class KECIRTAdvisory(Base):
     severity = Column(String(50))  # low / medium / high / critical
     source = Column(String(100))  # KE-CIRT/CC / CAK / CBK
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ── Fintech Correlation Engine ────────────────────────────────────────────
+
+
+class FintechWatchlist(Base):
+    __tablename__ = "fintech_watchlist"
+
+    id = Column(Integer, primary_key=True)
+    identifier = Column(String(255), nullable=False, index=True)   # IP, phone, or account
+    identifier_type = Column(String(20), nullable=False)           # "ip" | "phone" | "account"
+    threat_type = Column(String(100))                              # e.g. "SIM-swap", "B2C-reversal-fraud"
+    source = Column(String(100))                                   # "darkweb" | "KE-CIRT" | "manual"
+    confidence = Column(Integer, default=70)                       # 0-100
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+
+class FintechTransaction(Base):
+    __tablename__ = "fintech_transactions"
+
+    id = Column(Integer, primary_key=True)
+    txn_id = Column(String(100), unique=True, nullable=False)
+    sender_phone = Column(String(30))
+    receiver_phone = Column(String(30))
+    amount_kes = Column(Float)
+    txn_type = Column(String(50))                                  # "M-Pesa B2C", "SIM-Swap", etc.
+    source_ip = Column(String(64))
+    status = Column(String(30))                                    # "success" | "failed" | "reversed"
+    occurred_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    risk_flag = Column(Boolean, default=False)                     # set True if correlated
+    risk_reason = Column(String(500))                              # e.g. "source_ip on darkweb watchlist (SIM-swap)"
+    correlated_at = Column(DateTime, nullable=True)
 
 
 # ── Audit Log ─────────────────────────────────────────────────────────────
