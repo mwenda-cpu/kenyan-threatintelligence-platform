@@ -1080,6 +1080,22 @@ def api_telegram_channels_delete():
         return jsonify({"error": str(e)}), 500
 
 
+@dashboard_bp.route("/api/telegram/defaults", methods=["GET"])
+@require_login
+def api_telegram_defaults():
+    """Return default Telegram channels and message limit from .env."""
+    try:
+        raw = os.getenv("TELEGRAM_CHANNELS", "")
+        channels = [c.strip().lstrip("@") for c in raw.split(",") if c.strip()]
+        try:
+            limit = int(os.getenv("TELEGRAM_LIMIT_PER_CHANNEL", "200"))
+        except (TypeError, ValueError):
+            limit = 200
+        return jsonify({"channels": channels, "limit": limit})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @dashboard_bp.route("/api/exposure/shodan", methods=["GET"])
 @require_login
 def api_exposure_shodan():

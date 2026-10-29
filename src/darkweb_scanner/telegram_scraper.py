@@ -12,7 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import yaml
+from telethon.sessions import StringSession
+
 logger = logging.getLogger(__name__)
+
+# Default Kenyan keywords used as a fallback when no keyword list is configured.
+DEFAULT_KENYAN_KEYWORDS = ["m-pesa", "m pesa", "mpesa", "kcb", "ecitizen", "safaricom"]
 
 
 @dataclass
@@ -44,9 +50,9 @@ class TelegramConfig:
 
 async def scrape_channels(
     config: TelegramConfig,
-    scanner,
-    storage,
-    alerter,
+    scanner=None,
+    storage=None,
+    alerter=None,
     session_id: Optional[int] = None,
 ) -> dict:
     """
@@ -70,101 +76,106 @@ async def scrape_channels(
         logger.warning("No Telegram channels configured. Set TELEGRAM_CHANNELS in .env")
         return {"pages_scraped": 0, "hits_found": 0}
 
-    # Resolve the Telethon session: TELEGRAM_SESSION_STRING env var takes
-    # precedence, then a .session file on disk, otherwise we cannot run in a
-    # headless environment (no interactive OTP/2FA prompts possible).
-    session_file = Path(config.session_path)
-    if config.session_string:
-        session = StringSession(config.session_string)
-    elif session_file.exists():
-        session = str(session_file.with_suffix(""))
-    else:
-        headless = not sys.stdin.isatty()
-        if headless:
-            logger.error(
-                "Interactive login required. No Telegram session found and "
-                "TELEGRAM_SESSION_STRING is not set. Generate a .session file "
-                "via 'make telegram-auth' on a machine with a TTY, or set "
-                "TELEGRAM_SESSION_STRING to a StringSession value."
-            )
-        else:
-            logger.error(
-                f"Telegram session not found at {config.session_path}. "
-                "Run: make telegram-auth to authenticate first."
-            )
-        return {"pages_scraped": 0, "hits_found": 0}
-
-    client = TelegramClient(
-        session,
-        config.api_id,
-        config.api_hash,
-    )
+    # TELEGRAM_SESSION_STRING takes precedence for headless/background runs;
+    # otherwise fall back to the .session file path.
+    session = StringSession(config.session_string) if config.session_string else config.session_path
 
     pages_scraped = 0
     hits_found = 0
 
-    try:
-        await client.connect()
-        if not await client.is_user_authorized():
-            logger.error("Telegram session expired. Run: make telegram-auth to re-authenticate.")
-            return {"pages_scraped": 0, "hits_found": 0}
+    # Build/refresh the keyword scanner if none was provided or it has no
+    # keywords — fall back to the seed YAML and a default Kenyan keyword list.
+    if scanner is None or getattr(scanner, "keyword_count", 0) == 0:
+        kw_list: list[str] = []
+        yaml_path = Path("/app/config/keywords.yaml")
+        try:
+            if yaml_path.exists():
+                raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+                keywords = raw.get("keywords", raw) or {}
+                if isinstance(keywords, dict):
+                    for key, value in keywords.items():
+                        if isinstance(value, dict):
+                            kw_list.append(str(key))
+                        elif isinstance(value, (list, tuple, set)):
+                            kw_list.extend(str(k) for k in value)
+        except Exception:
+            kw_list = []
+        if not kw_list:
+            kw_list = list(DEFAULT_KENYAN_KEYWORDS)
+        # Normalize to lowercase for case-insensitive matching.
+        kw_list = [k.lower() for k in kw_list if str(k).strip()]
+        from ..scanner import KeywordConfig
+        from ..scanner import Scanner as _ScannerClass
 
-        for channel in config.channels:
-            logger.info(f"Scraping Telegram channel: @{channel} (limit={config.limit_per_channel})")
-            channel_total = 0
-            channel_text = 0
-            channel_hits = 0
+        kw_cfg = KeywordConfig.from_list(kw_list, category="telegram")
+        scanner = _ScannerClass(kw_cfg)
 
-            try:
-                entity = await client.get_entity(channel)
-                async for message in client.iter_messages(
-                    entity, limit=config.limit_per_channel
-                ):
-                    channel_total += 1
-                    # Capture text messages and media captions
-                    text = message.text or message.message or ""
-                    if not text.strip():
-                        continue
+    async with TelegramClient(
+        session,
+        config.api_id,
+        config.api_hash,
+    ) as client:
+            if not await client.is_user_authorized():
+                logger.error("Telegram session expired. Run: make telegram-auth to re-authenticate.")
+                return {"pages_scraped": 0, "hits_found": 0}
 
-                    channel_text += 1
-                    pages_scraped += 1
-                    url = f"https://t.me/{channel}/{message.id}"
+            for channel in config.channels:
+                logger.info(f"Scraping Telegram channel: @{channel} (limit={config.limit_per_channel})")
+                channel_total = 0
+                channel_text = 0
+                channel_hits = 0
 
-                    hits = scanner.scan(url=url, text=text, depth=0)
-                    for hit in hits:
-                        hit_id = storage.save_hit(
-                            url=hit.url,
-                            keyword=hit.keyword,
-                            category=hit.category,
-                            context=hit.context,
-                            position=hit.position,
-                            depth=0,
-                            session_id=session_id,
-                        )
-                        hits_found += 1
-                        channel_hits += 1
-                        if alerter.alert(hit):
-                            storage.mark_alerted(hit_id)
+                try:
+                    entity = await client.get_entity(channel)
+                    async for message in client.iter_messages(
+                        entity, limit=config.limit_per_channel
+                    ):
+                        channel_total += 1
+                        # Capture text messages and media captions
+                        text = message.text or message.message or ""
+                        if not text.strip():
+                            continue
 
-                    await asyncio.sleep(0.05)
+                        channel_text += 1
+                        pages_scraped += 1
+                        url = f"https://t.me/{channel}/{message.id}"
 
-                logger.info(
-                    f"@{channel}: {channel_total} total messages, "
-                    f"{channel_text} with text, {channel_hits} keyword hits"
-                )
+                        if scanner is not None and storage is not None:
+                            # Normalize to lowercase for case-insensitive matching.
+                            text_lower = text.lower()
+                            hits = scanner.scan(url=url, text=text_lower, depth=0)
+                            for hit in hits:
+                                hit_id = storage.save_hit(
+                                    url=hit.url,
+                                    keyword=hit.keyword,
+                                    category=hit.category,
+                                    context=hit.context,
+                                    position=hit.position,
+                                    depth=0,
+                                    session_id=session_id,
+                                    source_url=url,
+                                )
+                                hits_found += 1
+                                channel_hits += 1
+                                if alerter is not None and alerter.alert(hit):
+                                    storage.mark_alerted(hit_id)
 
-            except (UsernameNotOccupiedError, UsernameInvalidError):
-                logger.warning(f"Channel not found or invalid: @{channel}")
-            except ChannelPrivateError:
-                logger.warning(f"Channel is private, cannot access: @{channel}")
-            except FloodWaitError as e:
-                logger.warning(f"Flood wait {e.seconds}s for @{channel} — skipping")
-                await asyncio.sleep(e.seconds)
-            except Exception as e:
-                logger.error(f"Error scraping @{channel}: {e}", exc_info=True)
+                        await asyncio.sleep(0.05)
 
-    finally:
-        await client.disconnect()
+                    logger.info(
+                        f"@{channel}: {channel_total} total messages, "
+                        f"{channel_text} with text, {channel_hits} keyword hits"
+                    )
+
+                except (UsernameNotOccupiedError, UsernameInvalidError):
+                    logger.warning(f"Channel not found or invalid: @{channel}")
+                except ChannelPrivateError:
+                    logger.warning(f"Channel is private, cannot access: @{channel}")
+                except FloodWaitError as e:
+                    logger.warning(f"Flood wait {e.seconds}s for @{channel} — skipping")
+                    await asyncio.sleep(e.seconds)
+                except Exception as e:
+                    logger.error(f"Error scraping @{channel}: {e}", exc_info=True)
 
     logger.info(f"Telegram scan complete. Messages with text: {pages_scraped} | Hits: {hits_found}")
     return {"pages_scraped": pages_scraped, "hits_found": hits_found}
@@ -205,7 +216,7 @@ async def interactive_auth(config: TelegramConfig):
     print()
 
     client = TelegramClient(
-        str(session_file.with_suffix("")),
+        StringSession(config.session_string) if config.session_string else config.session_path,
         config.api_id,
         config.api_hash,
     )

@@ -1541,9 +1541,9 @@
         <div class="panel-body" style="display:flex;flex-direction:column;gap:14px;">
 
           <div>
-            <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;">Telegram Channel <span style="color:var(--red)">*</span></label>
-            <input id="cmChannel" class="input" placeholder="e.g. irna_1931 or t.me/channelname" style="width:100%;font-family:var(--mono);font-size:.85rem;" />
-            <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">Username, @handle, or invite link</div>
+            <label style="font-size:.78rem;color:var(--muted);display:block;margin-bottom:4px;">Telegram Channel(s) <span style="color:var(--red)">*</span></label>
+            <select id="cmChannel" class="input" multiple size="6" style="width:100%;font-family:var(--mono);font-size:.85rem;"></select>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:3px;">Select channel(s). Defaults loaded from TELEGRAM_CHANNELS in .env.</div>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -1593,9 +1593,25 @@
             <span>Skip translation if message is already English</span>
           </label>
 
-          <button class="btn btn-primary" id="cmStartBtn" onclick="cmStartScan()" style="width:100%;font-size:.88rem;padding:10px;">
-            > Start Scan
-          </button>
+          <!-- Active Kenya Keywords (collapsible) -->
+          <div id="cmKeywordsPanel" style="margin-bottom:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:rgba(255,255,255,.03);">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--panel-bg,#1a1a2e);cursor:pointer;" onclick="toggleCmKeywords()">
+              <span id="cmKeywordsLabel" style="font-size:.78rem;color:var(--muted);font-weight:600;">▾ Active Kenya Keywords Scanned</span>
+              <span id="cmKeywordsCount" style="font-size:.72rem;color:var(--accent);">0</span>
+            </div>
+            <div id="cmKeywordsList" style="display:none;padding:8px 10px;color:var(--muted);font-size:.78rem;">
+              <div id="cmKeywordsBadges" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:6px;">
+            <button class="btn btn-primary" id="cmStartBtn" onclick="cmStartScan()" style="flex:1;font-size:.88rem;padding:10px;">
+              > Start Scan
+            </button>
+            <button class="btn btn-secondary" id="cmStopBtn" onclick="cmStopScan()" style="flex:1;font-size:.88rem;padding:10px;display:none;">
+              Stop Scan
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1626,6 +1642,27 @@
               </tr></thead>
               <tbody id="cmJobsTable"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px;">No jobs yet</td></tr></tbody>
             </table>
+
+            <!-- Channel Monitor Results -->
+            <div id="cmResultsPanel" style="display:none;margin-top:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:var(--panel-bg,#1a1a2e);border-bottom:1px solid var(--border);">
+                <span id="cmResultsTitle" style="font-size:.78rem;color:var(--muted);font-weight:600;">Results</span>
+                <button onclick="document.getElementById('cmResultsPanel').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;">×</button>
+              </div>
+              <div class="panel-body" style="padding:0;">
+                <table style="width:100%;font-size:.76rem;">
+                  <thead>
+                    <tr>
+                      <th style="text-align:left;padding:6px 10px;">Channel</th>
+                      <th style="text-align:left;padding:6px 10px;">Time</th>
+                      <th style="text-align:left;padding:6px 10px;">Message Text</th>
+                      <th style="text-align:left;padding:6px 10px;">Keyword Hit</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cmResultsTable"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -5829,6 +5866,82 @@
   let _cmPollTimer   = null;
   let _cmLogOffset   = 0;
 
+  async function loadTelegramDefaults() {
+    try {
+      const res = await fetch('/api/telegram/defaults');
+      const data = await res.json();
+      const channels = Array.isArray(data.channels) ? data.channels : [];
+      const limit = data.limit != null ? data.limit : 200;
+
+      const select = document.getElementById('cmChannel');
+      const existing = new Set(Array.from(select.options).map(o => o.value));
+      channels.forEach(ch => {
+        if (!existing.has(ch)) {
+          const o = document.createElement('option');
+          o.value = ch;
+          o.textContent = ch;
+          select.add(o);
+        }
+      });
+      // Pre-select defaults only if the user hasn't chosen anything yet.
+      if (select.selectedOptions.length === 0 && channels.length) {
+        channels.forEach(ch => {
+          const o = Array.from(select.options).find(o => o.value === ch);
+          if (o) o.selected = true;
+        });
+      }
+
+      const limitInput = document.getElementById('cmLimit');
+      if (limitInput && (!limitInput.value || limitInput.value === '200')) limitInput.value = limit;
+    } catch (e) {}
+  }
+
+  async function loadCmKeywords() {
+    try {
+      const res = await fetch('/api/keywords');
+      const data = await res.json();
+      const keywords = Array.isArray(data) ? data : [];
+      const countEl = document.getElementById('cmKeywordsCount');
+      if (countEl) countEl.textContent = keywords.length;
+      const box = document.getElementById('cmKeywordsBadges');
+      if (!box) return;
+      box.innerHTML = '';
+      keywords.forEach(k => {
+        const kw = k.keyword || k;
+        const cat = k.category || '';
+        const span = document.createElement('span');
+        span.textContent = kw;
+        span.style.cssText = 'display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(88,166,255,.12);color:var(--accent);font-size:.72rem;border:1px solid rgba(88,166,255,.3);font-family:var(--mono);';
+        span.title = cat ? `${kw} (${cat})` : kw;
+        box.appendChild(span);
+      });
+    } catch (e) {
+      // Fallback: hardcoded Kenyan keyword list.
+      const fallback = ['eCitizen','KRA','NHIF','NTSA','IEBC','Huduma','e-government','digital identity','Hate speech','misinformation'];
+      const box = document.getElementById('cmKeywordsBadges');
+      const countEl = document.getElementById('cmKeywordsCount');
+      if (countEl) countEl.textContent = fallback.length;
+      if (box) {
+        box.innerHTML = '';
+        fallback.forEach(kw => {
+          const span = document.createElement('span');
+          span.textContent = kw;
+          span.style.cssText = 'display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(88,166,255,.12);color:var(--accent);font-size:.72rem;border:1px solid rgba(88,166,255,.3);font-family:var(--mono);';
+          box.appendChild(span);
+        });
+      }
+    }
+  }
+
+  function toggleCmKeywords() {
+    const list = document.getElementById('cmKeywordsList');
+    const label = document.getElementById('cmKeywordsLabel');
+    if (!list) return;
+    const hidden = list.style.display === 'none';
+    list.style.display = hidden ? 'block' : 'none';
+    if (label) label.textContent = (hidden ? '▸' : '▾') + ' Active Kenya Keywords Scanned';
+  }
+
   async function cmInit() {
     // Check credentials
     try {
@@ -5836,25 +5949,35 @@
       document.getElementById('cmCredBanner').style.display = creds.configured ? 'none' : 'block';
       document.getElementById('cmStartBtn').disabled = !creds.configured;
     } catch(e) {}
+    await loadTelegramDefaults();
+    await loadCmKeywords();
     cmLoadJobs();
   }
 
   async function cmStartScan() {
-    const channel = document.getElementById('cmChannel').value.trim().replace(/^@/, '');
-    if (!channel) { toast('Channel name is required', 'error'); return; }
+    const select = document.getElementById('cmChannel');
+    const channels = Array.from(select.selectedOptions).map(o => o.value.trim()).filter(Boolean);
+    if (!channels.length) { toast('Select at least one channel', 'error'); return; }
 
     const body = {
-      channel,
-      limit:        parseInt(document.getElementById('cmLimit').value) || 200,
-      days:         document.getElementById('cmDays').value ? parseInt(document.getElementById('cmDays').value) : null,
-      lang:         document.getElementById('cmLang').value || null,
-      max_video_mb: parseInt(document.getElementById('cmMaxVideo').value) || 50,
-      min_space_gb: parseFloat(document.getElementById('cmMinSpace').value) || 1.0,
-      skip_english: document.getElementById('cmSkipEnglish').checked,
+      channels,
+      channel:        channels[0],
+      limit:          parseInt(document.getElementById('cmLimit').value) || 200,
+      days:           document.getElementById('cmDays').value ? parseInt(document.getElementById('cmDays').value) : null,
+      lang:           document.getElementById('cmLang').value || null,
+      max_video_mb:   parseInt(document.getElementById('cmMaxVideo').value) || 50,
+      min_space_gb:   parseFloat(document.getElementById('cmMinSpace').value) || 1.0,
+      skip_english:   document.getElementById('cmSkipEnglish').checked,
     };
 
     document.getElementById('cmStartBtn').disabled = true;
     document.getElementById('cmStartBtn').textContent = ' Starting...';
+    const stopBtn = document.getElementById('cmStopBtn');
+    if (stopBtn) {
+      stopBtn.style.display = 'inline-block';
+      stopBtn.disabled = false;
+      stopBtn.textContent = 'Stop Scan';
+    }
 
     try {
       const res  = await fetch('/api/channel-monitor/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
@@ -5862,7 +5985,7 @@
       if (!res.ok || !data.ok) { toast(data.error || 'Failed to start', 'error'); return; }
       _cmActiveJobId = data.job_id;
       _cmLogOffset   = 0;
-      cmShowActivePanel(channel);
+      cmShowActivePanel(channels.join(', '));
       cmPollLog();
       cmLoadJobs();
       toast('Scan started!');
@@ -5871,6 +5994,20 @@
     } finally {
       document.getElementById('cmStartBtn').disabled = false;
       document.getElementById('cmStartBtn').textContent = '> Start Scan';
+    }
+  }
+
+  async function cmStopScan() {
+    if (!_cmActiveJobId) return;
+    const stopBtn = document.getElementById('cmStopBtn');
+    if (stopBtn) {
+      stopBtn.disabled = true;
+      stopBtn.textContent = 'Stopping...';
+    }
+    try {
+      await fetch(`/api/channel-monitor/jobs/${_cmActiveJobId}/stop`, {method:'POST'});
+    } catch(e) {
+      // Ignore network errors during stop; flag is still set server-side.
     }
   }
 
@@ -5891,26 +6028,48 @@
     _cmPollTimer = setInterval(async () => {
       if (!_cmActiveJobId) return;
       try {
-        const data = await (await fetch(`/api/channel-monitor/jobs/${_cmActiveJobId}/log?since=${_cmLogOffset}`)).json();
+        const res = await fetch(`/api/channel-monitor/jobs/${_cmActiveJobId}/log?since=${_cmLogOffset}`);
+        // A 404 means the job/log is gone (job ended) — stop polling and treat as completed.
+        if (res.status === 404) {
+          clearInterval(_cmPollTimer);
+          _cmPollTimer = null;
+          cmFinishJob('completed');
+          cmLoadJobs();
+          return;
+        }
+        if (!res.ok) {
+          // Silently ignore transient 503/404-ish errors instead of spamming.
+          if (res.status === 503) return;
+          return;
+        }
+        const data = await res.json();
         if (data.log && data.log.length) {
           const box = document.getElementById('cmLogBox');
           box.textContent += data.log.join('\n') + '\n';
           box.scrollTop = box.scrollHeight;
           _cmLogOffset = data.total;
         }
-        if (data.status === 'completed' || data.status === 'error') {
+        if (data.status === 'completed' || data.status === 'error' || data.status === 'stopping') {
           clearInterval(_cmPollTimer);
           _cmPollTimer = null;
-          cmFinishJob(data.status);
+          cmFinishJob(data.status === 'stopping' ? 'completed' : data.status);
           cmLoadJobs();
         }
-      } catch(e) {}
-    }, 1500);
+      } catch(e) {
+        // Silently ignore transient network/503 errors instead of spamming.
+      }
+    }, 5000);
   }
 
   function cmFinishJob(status) {
     const badge = document.getElementById('cmStatusBadge');
     const dlBtn = document.getElementById('cmDownloadBtn');
+    const stopBtn = document.getElementById('cmStopBtn');
+    if (stopBtn) {
+      stopBtn.style.display = 'none';
+      stopBtn.disabled = true;
+      stopBtn.textContent = 'Stop Scan';
+    }
     if (status === 'completed') {
       badge.textContent = ' Completed';
       badge.style.background = 'rgba(63,185,80,.12)';
@@ -5931,6 +6090,35 @@
     window.location.href = `/api/channel-monitor/jobs/${_cmActiveJobId}/download`;
   }
 
+  async function cmViewResults(jobId) {
+    const panel = document.getElementById('cmResultsPanel');
+    const tbody = document.getElementById('cmResultsTable');
+    const title = document.getElementById('cmResultsTitle');
+    if (!panel || !tbody) return;
+    panel.style.display = 'block';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">Loading...</td></tr>';
+    try {
+      const data = await (await fetch(`/api/channel-monitor/jobs/${jobId}/results`)).json();
+      const results = Array.isArray(data.results) ? data.results : [];
+      if (title) title.textContent = `Results — Job ${jobId} (${results.length} hit(s))`;
+      if (!results.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">No keyword hits recorded for this job.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = results.map(r => {
+        const txt = (r.message_text || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return `<tr>
+          <td style="padding:6px 10px;font-family:var(--mono);color:var(--accent);">${r.channel || '-'}</td>
+          <td style="padding:6px 10px;">${r.time || '-'}</td>
+          <td style="padding:6px 10px;">${txt}</td>
+          <td style="padding:6px 10px;color:var(--red);font-weight:600;">${r.keyword_hit || '—'}</td>
+        </tr>`;
+      }).join('');
+    } catch(e) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--red);padding:16px;">Failed to load results.</td></tr>';
+    }
+  }
+
   async function cmLoadJobs() {
     try {
       const jobs = await (await fetch('/api/channel-monitor/jobs')).json();
@@ -5949,6 +6137,9 @@
         const dlBtn = (j.status === 'completed' || j.status === 'error')
           ? `<button class="btn btn-secondary" onclick="cmDownloadJobById('${j.id}')" style="font-size:.72rem;padding:3px 9px;"> ZIP</button>`
           : '';
+        const resultsBtn = (j.status === 'completed' || j.status === 'error')
+          ? `<button class="btn btn-secondary" onclick="cmViewResults('${j.id}')" style="font-size:.72rem;padding:3px 9px;">Results</button>`
+          : '';
         const viewBtn = `<button class="btn btn-secondary" onclick="cmViewJob('${j.id}')" style="font-size:.72rem;padding:3px 9px;">PST Log</button>`;
         const delBtn  = j.status !== 'running'
           ? `<button class="btn" onclick="cmDeleteJob('${j.id}')" style="font-size:.72rem;padding:3px 9px;background:rgba(248,81,73,.1);color:var(--red);border:1px solid rgba(248,81,73,.3);"></button>`
@@ -5957,7 +6148,7 @@
           <td><span style="font-family:var(--mono);color:var(--accent);">@${j.channel}</span></td>
           <td class="time-cell">${ts}</td>
           <td>${statusHtml}</td>
-          <td style="display:flex;gap:6px;">${viewBtn}${dlBtn}${delBtn}</td>
+          <td style="display:flex;gap:6px;">${viewBtn}${resultsBtn}${dlBtn}${delBtn}</td>
         </tr>`;
       }).join('');
     } catch(e) {}
@@ -7370,6 +7561,9 @@
     }
   });
 
+  // Pre-load Telegram defaults when the page loads (also re-runs on tab open via cmInit).
+  loadTelegramDefaults();
+  loadCmKeywords();
 
 
 })();

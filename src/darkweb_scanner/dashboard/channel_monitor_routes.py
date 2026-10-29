@@ -3,7 +3,8 @@ Channel Monitor blueprint — Telegram channel scraping tab.
 Integrates channel_monitor.py into the threat intelligence dashboard.
 """
 
-import asyncio
+import csv
+import io
 import os
 import shutil
 import tempfile
@@ -15,6 +16,9 @@ from pathlib import Path
 from flask import Blueprint, after_this_request, jsonify, request, send_file
 
 from ..auth import require_login
+from ..keywords_db import keyword_config
+from ..scanner import Scanner
+from .storage_helper import get_storage
 
 channel_monitor_bp = Blueprint("channel_monitor", __name__)
 
@@ -124,16 +128,12 @@ def api_cm_job_log(job_id: str):
 @channel_monitor_bp.route("/api/channel-monitor/jobs/<job_id>/download", methods=["GET"])
 @require_login
 def api_cm_job_download(job_id: str):
-    """Build a ZIP of the job output directory to a temp file, then serve
-    that file with a real Content-Length.
+    """Build a ZIP containing a CSV of the saved hits for this job.
 
-    Streaming the ZIP live from a generator (the old approach) meant no
-    Content-Length and no way to answer a Range resume with anything but a
-    fresh full 200 body — a client splicing that onto bytes it already had
-    is exactly what produces a truncated archive with orphaned tail data
-    and no End Of Central Directory record. Serving a file that's already
-    complete on disk lets Flask's normal conditional/Range handling work
-    correctly instead.
+    The scrape worker no longer writes files to ``output_dir``; instead every
+    hit is persisted to the database (keyed by the job's crawl session). We
+    read those hits back and render them into a CSV inside the ZIP so the
+    download is never an empty stub.
     """
     with _jobs_lock:
         j = _jobs.get(job_id)
@@ -142,41 +142,44 @@ def api_cm_job_download(job_id: str):
     if j["status"] not in ("completed", "error"):
         return jsonify({"error": "Job still running"}), 400
 
-    output_dir = Path(j["output_dir"])
-    if not output_dir.exists():
-        return jsonify({"error": "Output directory not found"}), 404
+    storage = get_storage()
+    session_id = j["config"].get("session_id")
+    hits = storage.get_hits_by_session(session_id, limit=10000) if session_id else []
 
     channel = j["config"].get("channel", "channel").replace("/", "_").replace("@", "")
     ts = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d_%H%M")
     zip_filename = f"channel_monitor_{channel}_{ts}.zip"
 
-    files = sorted([f for f in output_dir.rglob("*") if f.is_file()])
-
-    total_source_bytes = sum(f.stat().st_size for f in files)
-    if total_source_bytes > MAX_DOWNLOAD_SOURCE_BYTES:
-        return jsonify({
-            "error": (
-                f"Output directory is {total_source_bytes / (1024 ** 3):.2f} GB, "
-                f"over the {MAX_DOWNLOAD_SOURCE_BYTES / (1024 ** 3):.0f} GB download "
-                "cap. Retrieve the files directly from the server instead."
-            )
-        }), 413
+    # Render hits into a CSV in memory.
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["job_id", "channel", "url", "keyword", "category", "context", "position", "found_at"])
+    for h in hits:
+        url = h.url or ""
+        parts = url.rstrip("/").split("/")
+        ch = parts[3] if len(parts) > 3 else ""
+        writer.writerow([
+            job_id,
+            ch,
+            url,
+            h.keyword or "",
+            h.category or "",
+            h.context or "",
+            h.position if h.position is not None else "",
+            h.found_at.isoformat() if h.found_at else "",
+        ])
+    csv_bytes = buf.getvalue().encode("utf-8")
 
     _ensure_dirs()
     fd, tmp_path = tempfile.mkstemp(suffix=".zip", prefix="cm_download_", dir=CHANNEL_MONITOR_DIR)
     try:
         with os.fdopen(fd, "wb") as fh:
             with zipfile.ZipFile(fh, "w", zipfile.ZIP_STORED) as zf:
-                for fpath in files:
-                    arcname = str(fpath.relative_to(output_dir.parent))
-                    zf.write(fpath, arcname)
+                zf.writestr(f"channel_monitor_{channel}_{ts}.csv", csv_bytes)
             fh.flush()
             os.fsync(fh.fileno())
             bytes_written = fh.tell()
 
-        # Integrity guard: what's on disk must match what we actually wrote,
-        # and must parse as a well-formed archive (catches a truncated write
-        # even when the byte count happens to line up).
         on_disk_size = os.path.getsize(tmp_path)
         if on_disk_size == 0 or on_disk_size != bytes_written:
             raise IOError(
@@ -205,6 +208,53 @@ def api_cm_job_download(job_id: str):
     )
 
 
+@channel_monitor_bp.route("/api/channel-monitor/jobs/<job_id>/results", methods=["GET"])
+@require_login
+def api_cm_job_results(job_id: str):
+    """Return the saved hits for a channel-monitor job as a JSON list.
+
+    Each entry: {channel, time, message_text, keyword_hit}.
+    """
+    with _jobs_lock:
+        j = _jobs.get(job_id)
+    if not j:
+        return jsonify({"error": "Job not found"}), 404
+
+    storage = get_storage()
+    session_id = j["config"].get("session_id")
+    hits = storage.get_hits_by_session(session_id, limit=500) if session_id else []
+
+    results = []
+    for h in hits:
+        url = h.url or ""
+        parts = url.rstrip("/").split("/")
+        channel = parts[3] if len(parts) > 3 else ""
+        results.append({
+            "channel": channel,
+            "time": h.found_at.isoformat() if h.found_at else "",
+            "message_text": h.context or "",
+            "keyword_hit": h.keyword or "",
+        })
+
+    return jsonify({"job_id": job_id, "results": results})
+
+
+@channel_monitor_bp.route("/api/channel-monitor/jobs/<job_id>/stop", methods=["POST"])
+@require_login
+def api_cm_job_stop(job_id: str):
+    """Mark a running channel-monitor job for cancellation."""
+    with _jobs_lock:
+        j = _jobs.get(job_id)
+    if not j:
+        return jsonify({"error": "Job not found"}), 404
+    if j["status"] not in ("running",):
+        return jsonify({"status": j["status"]})
+    with _jobs_lock:
+        j["cancel_requested"] = True
+        j["status"] = "stopping"
+    return jsonify({"status": "stopping"})
+
+
 @channel_monitor_bp.route("/api/channel-monitor/jobs/<job_id>", methods=["DELETE"])
 @require_login
 def api_cm_job_delete(job_id: str):
@@ -228,22 +278,33 @@ def api_cm_job_delete(job_id: str):
 def api_cm_start():
     body = request.get_json() or {}
 
-    channel = (body.get("channel") or "").strip().lstrip("@")
-    if not channel:
-        return jsonify({"error": "channel is required"}), 400
+    channels_raw = body.get("channels")
+    if isinstance(channels_raw, str):
+        channels_raw = [c.strip() for c in channels_raw.split(",") if c.strip()]
+    channels = [c.strip().lstrip("@") for c in (channels_raw or []) if c and str(c).strip()]
+    # Backward compat: single `channel` field
+    if not channels and body.get("channel"):
+        channels = [str(body.get("channel")).strip().lstrip("@")]
+    if not channels:
+        return jsonify({"error": "channel(s) required"}), 400
 
     creds = _get_telegram_creds()
     if not (creds["api_id"] and creds["api_hash"] and creds["phone"]):
         return jsonify({"error": "Telegram credentials not configured. Add TELEGRAM_API_ID, TELEGRAM_API_HASH and TELEGRAM_PHONE to your .env"}), 400
 
+    storage = get_storage()
+    session_id = storage.create_crawl_session(channels)
+
     config = {
-        "channel":      channel,
-        "limit":        int(body.get("limit", 200)),
-        "days":         int(body.get("days")) if body.get("days") else None,
-        "lang":         (body.get("lang") or "").strip() or None,
-        "max_video_mb": int(body.get("max_video_mb", 50)),
-        "min_space_gb": float(body.get("min_space_gb", 1.0)),
-        "skip_english": bool(body.get("skip_english", False)),
+        "channels":      channels,
+        "channel":       ", ".join(channels),
+        "session_id":    session_id,
+        "limit":         int(body.get("limit", 200)),
+        "days":          int(body.get("days")) if body.get("days") else None,
+        "lang":          (body.get("lang") or "").strip() or None,
+        "max_video_mb":  int(body.get("max_video_mb", 50)),
+        "min_space_gb":  float(body.get("min_space_gb", 1.0)),
+        "skip_english":  bool(body.get("skip_english", False)),
     }
 
     job_id = _new_job_id()
@@ -252,35 +313,41 @@ def api_cm_start():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     job = {
-        "status":     "running",
-        "config":     config,
-        "output_dir": str(output_dir),
-        "started_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
-        "ended_at":   None,
-        "log":        [],
-        "error":      None,
+        "status":        "running",
+        "config":        config,
+        "output_dir":    str(output_dir),
+        "started_at":    datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+        "ended_at":      None,
+        "log":           [],
+        "error":         None,
+        "cancel_requested": False,
     }
 
     with _jobs_lock:
         _jobs[job_id] = job
 
     def run():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        def log_func(msg: str):
+            with _jobs_lock:
+                if job_id in _jobs:
+                    _jobs[job_id]["log"].append(msg)
+
         try:
-            loop.run_until_complete(
-                _run_channel_monitor(job_id, config, output_dir, creds)
-            )
+            _run_channel_monitor(config, log_func, job_id)
+            with _jobs_lock:
+                if job_id in _jobs:
+                    _jobs[job_id]["status"] = "completed"
+                    _jobs[job_id]["ended_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+            log_func("[✓] Scan completed successfully. Click Download to get results.")
         except Exception as e:
             import traceback
             with _jobs_lock:
-                _jobs[job_id]["status"] = "error"
-                _jobs[job_id]["error"] = str(e)
-                _jobs[job_id]["ended_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-                _jobs[job_id]["log"].append(f"[✗] Fatal error: {e}")
-                _jobs[job_id]["log"].append(traceback.format_exc())
-        finally:
-            loop.close()
+                if job_id in _jobs:
+                    _jobs[job_id]["status"] = "error"
+                    _jobs[job_id]["error"] = str(e)
+                    _jobs[job_id]["ended_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+                    _jobs[job_id]["log"].append(f"[✗] Fatal error: {e}")
+                    _jobs[job_id]["log"].append(traceback.format_exc())
 
     t = threading.Thread(target=run, daemon=True, name=f"cm_{job_id}")
     t.start()
@@ -288,96 +355,75 @@ def api_cm_start():
     return jsonify({"ok": True, "job_id": job_id})
 
 
-# ── The async worker that actually runs the monitor ───────────────────────────
+# ── The channel monitor worker ────────────────────────────────────────────────
 
-async def _run_channel_monitor(job_id: str, config: dict, output_dir: Path, creds: dict):
-    """Run channel_monitor logic inline, logging to the job's log list."""
+def _run_channel_monitor(config: dict, log_func, job_id=None):
+    """Run the Telegram channel monitor in an isolated event loop.
 
-    def log(msg: str):
-        with _jobs_lock:
-            if job_id in _jobs:
-                _jobs[job_id]["log"].append(msg)
+    The whole scrape runs inside a brand-new asyncio event loop created on this
+    thread, so it never shares or conflicts with Flask's main-thread loop.
+    """
+    import asyncio
 
-    log(f"[+] Starting channel monitor for: @{config['channel']}")
-    log(f"[i] Settings: limit={config['limit']}, days={config['days']}, lang={config['lang']}, max_video={config['max_video_mb']}MB, skip_english={config['skip_english']}")
-
-    # Import here to avoid circular import issues at module load time
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-
-    try:
-        from telethon import TelegramClient
-
-        from ..channel_monitor import (
-            process_channel,
-        )
-    except ImportError as e:
-        log(f"[✗] Import error: {e}")
-        log("[i] Make sure telethon, deep-translator and langdetect are installed")
-        with _jobs_lock:
-            _jobs[job_id]["status"] = "error"
-            _jobs[job_id]["error"] = str(e)
-            _jobs[job_id]["ended_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-        return
-
-    session_file = CHANNEL_MONITOR_DIR / "channel_monitor"
-
-    try:
-        client = TelegramClient(
-            str(session_file),
-            int(creds["api_id"]),
-            creds["api_hash"],
-        )
-        await client.start(phone=creds["phone"])
-        me = await client.get_me()
-        log(f"[+] Connected as @{me.username or me.first_name}")
-    except Exception as e:
-        log(f"[✗] Telegram connection failed: {e}")
-        with _jobs_lock:
-            _jobs[job_id]["status"] = "error"
-            _jobs[job_id]["error"] = str(e)
-            _jobs[job_id]["ended_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
-        return
-
-    try:
-        # Monkey-patch print so we capture output into job log
-        import builtins
-        _orig_print = builtins.print
-
-        def _log_print(*args, **kwargs):
-            msg = " ".join(str(a) for a in args)
-            log(msg)
-            _orig_print(*args, **kwargs)
-
-        builtins.print = _log_print
-
-        await process_channel(
-            client=client,
-            channel_id=config["channel"],
-            limit=config["limit"],
-            output_dir=output_dir,
-            days=config["days"],
-            min_space_gb=config["min_space_gb"],
-            max_video_mb=config["max_video_mb"],
-            forced_lang=config["lang"],
-            skip_english=config["skip_english"],
-        )
-    except Exception as e:
-        import traceback
-        log(f"[✗] Error during scan: {e}")
-        log(traceback.format_exc())
-        with _jobs_lock:
-            _jobs[job_id]["status"] = "error"
-            _jobs[job_id]["error"] = str(e)
-    else:
-        with _jobs_lock:
-            _jobs[job_id]["status"] = "completed"
-        log("[✓] Scan completed successfully. Click Download to get results.")
-    finally:
-        builtins.print = _orig_print
-        with _jobs_lock:
-            _jobs[job_id]["ended_at"] = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    def run_in_thread(coro):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            await client.disconnect()
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    from ..telegram_scraper import TelegramConfig, scrape_channels
+
+    storage = get_storage()
+    session_id = config["session_id"]
+
+    # Build the keyword scanner from the active keyword list so hits are
+    # persisted to the database keyed by this job's crawl session.
+    kw_cfg = keyword_config(storage, [Path("/app/data/keywords.yaml")])
+    scanner = Scanner(kw_cfg)
+
+    cfg = TelegramConfig(
+        api_id=int(os.getenv("TELEGRAM_API_ID")),
+        api_hash=os.getenv("TELEGRAM_API_HASH"),
+        session_path=os.getenv("TELEGRAM_SESSION_PATH"),
+        session_string=os.getenv("TELEGRAM_SESSION_STRING"),
+        channels=config["channels"],
+        limit_per_channel=config.get("limit", 200),
+    )
+
+    log_func(f"[+] Starting channel monitor for: {', '.join(config['channels'])}")
+    log_func(f"[i] Settings: limit={cfg.limit_per_channel}, session_id={session_id}")
+
+    # Honor a user-requested stop before beginning the scrape.
+    if job_id and _jobs.get(job_id, {}).get("cancel_requested"):
+        log_func("[X] Scan cancelled by user before starting.")
+        return
+
+    try:
+        results = run_in_thread(
+            scrape_channels(
+                cfg,
+                scanner=scanner,
+                storage=storage,
+                alerter=None,
+                session_id=session_id,
+            )
+        )
+        storage.update_crawl_session(
+            session_id,
+            results.get("pages_scraped", 0),
+            results.get("hits_found", 0),
+            status="completed",
+        )
+        log_func(
+            f"[+] Scan complete. Processed {results.get('pages_scraped', 0)} "
+            f"message(s), {results.get('hits_found', 0)} hit(s)."
+        )
+    except Exception as e:
+        try:
+            storage.update_crawl_session(session_id, 0, 0, status="failed")
         except Exception:
             pass
+        log_func(f"[X] Telegram connection failed: {e}")
+        raise
