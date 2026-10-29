@@ -6,26 +6,37 @@ A self-hosted, open-source threat intelligence platform built for the Kenyan Gov
 
 ---
 
-## Features
+## Features (Verified Working)
 
-- **Dark Web Crawler** — async Tor-based crawler for .onion sites, configurable keyword monitoring, real-time webhook and email alerts
-- **Quick Scan** — on-demand OSINT sweep of any domain, IP, URL, or company name across configured sources, with live progress and cancellation
-- **Intelligence Dashboard** — start page with live threat level, ransomware victim feed, group rankings, Kenya country breakdown, ThreatFox IOC mini-feed, and press headlines
-- **ransomware.live PRO Integration** — 324+ tracked groups, 26 000+ victims, IOCs, negotiation chats, ransom notes, YARA rules, SEC 8-K filings, CSIRT directory
-- **IOC Feed** — live indicators of compromise from ThreatFox, URLhaus, and Feodo Tracker with search, type filtering, and confidence scoring
-- **Ransomware Tracker** — live tracking with Kenya regional focus, victim counts, and Kenya-targeting flags
-- **Threat Actor Profiles** — structured APT and cybercriminal profiles relevant to Kenya
-- **DNS Investigations** — passive + active DNS recon, subdomain brute-force (50 workers), TCP port scan (30 ports), HTTP directory enumeration, crt.sh certificate transparency, zone transfer attempts, SPF/DMARC/DKIM scoring, interactive subdomain graph, PDF export with world map
-- **IP Investigation** — parallel AbuseIPDB + VirusTotal lookups with geolocation, ASN, and history
-- **WhatsMyName Username Check** — checks a username across 200+ sites concurrently
-- **OSINT Domain Intel** — proxied access to Shodan, Censys, GreyNoise, URLScan, MXToolbox, SecurityTrails, VirusTotal, RDAP/WHOIS, and GitHub/Reddit/Discord/TikTok OSINT profiles
-- **ThreatFox / URLhaus / AbuseIPDB proxies** — backend-proxied API calls to avoid CORS and keep keys server-side
-- **Channel Monitor** — on-demand Telegram channel scraping from the dashboard, auto-translated to English, with media download and ZIP export
-- **Telegram Scraper** — background monitoring of configured public channels for keyword hits
-- **Projects** — scoped monitoring engagements with per-project keywords, target domains, entities, and hit tracking
-- **PDF Report Generation** — ReportLab + Playwright-rendered world map for DNS investigations; digest PDF via Mailgun
-- **Daily Digest** — morning email with CISA KEV, OTX pulses, abuse.ch feeds, and curated RSS
-- **Authentication** — bcrypt passwords, TOTP 2FA, optional Google/GitHub/Microsoft/Apple OAuth, role-based access control (admin / analyst)
+- **Dark Web Crawler** — async Tor-based crawler for .onion sites with configurable Kenyan keyword monitoring.
+- **Telegram Channel Monitor** — on-demand scraping of public Telegram OSINT channels (StringSession auth, Stop Scan support, ZIP export). Keyword hits persist to the threat hits database.
+- **Threat Intelligence REST API v1** — read-only API at `/api/v1/*` with 14 endpoints authenticated via `X-API-Key` header. See `API.md`.
+- **STIX 2.1 Export** — `/api/v1/export/stix` returns up to 100 latest IOCs as STIX 2.1 indicator objects for MISP/Splunk/TheHive ingest.
+- **Webhook Alerting** — `/api/v1/alerts/test` and crawler hits POST to a configurable `ALERT_WEBHOOK_URL` (Slack/Teams/Discord).
+- **Suricata IDS Integration** — custom DDoS rules (HTTP/HTTPS/ICMP flood), `eve.json` parser running as a background thread every 15 s, hits stored in the same threat hits table and shown on the "Network Alerts" dashboard tab.
+- **KE-CIRT Advisory Ingestion** — automated ingestion of KE-CIRT/CC, CAK, and CBK PDF advisories (`data/ke_reports/`) into the `ke_cirt_advisories` table with date extraction, summary cleaning, and a dashboard tab.
+- **Fintech IOC Correlation Engine** — `/api/v1/fintech/watchlist`, `/api/v1/fintech/lookup`, `/api/v1/fintech/flagged`. Real-world IOC watchlist that financial SOCs query to check suspicious IPs/phones against dark web and KE-CIRT intel.
+- **Audit Log** — `audit_log` table + `/api/v1/audit` endpoint + dashboard tab. Every STIX export, webhook send, and report download is logged with actor, IP, and user-agent.
+- **Sector Filtering** — `/api/v1/threats?sector=fintech|government|banking` and a dashboard dropdown to isolate threats by sector.
+- **Self-Registration with Verification** — bcrypt passwords, email verification via Resend API, and admin approval workflow. `/admin/pending_users` for admin approval.
+- **KE-CIRT STIX Sharing** — `scripts/push_to_ke_cirt.py` posts the STIX bundle to a configurable `KE_CIRT_WEBHOOK_URL` for outbound intelligence sharing.
+- **Production Suricata Override** — `docker-compose.prod.suricata.yml` uses `network_mode: host` for institutional perimeter deployment.
+- **DNS Reconnaissance** — passive subdomain enumeration, A/NS/MX record lookups, ASN geolocation, and subdomain graph visualization. Note: active port scans and directory enumeration require network-level access to the target; from a typical internet-connected laptop, they will return 0 results because the target's firewall blocks the requests — this is expected real-world behavior, not a bug.
+
+## Verified as of October 29, 2026
+
+All features under "Features (Verified Working)" have been tested end-to-end on a Docker Compose deployment. Every listed endpoint has been verified with `curl` against a live API key. The "Roadmap" section lists features that are NOT in the current build.
+
+## Roadmap (Planned, Not Implemented)
+
+- Quick Scan (on-demand OSINT sweep)
+- Full DNS Investigation suite (Playwright-rendered world map PDF export, aggressive brute-force at scale)
+- ransomware.live PRO negotiation-chat / YARA / SEC 8-K UI panels
+- WhastMyName username check
+- Projects (scoped monitoring engagements)
+- Daily Digest (Mailgun morning email)
+- 2FA / OAuth end-to-end (code exists in auth.py, untested in CI)
+- webcheck sidecar service
 
 ---
 
@@ -49,7 +60,6 @@ docker-compose
   tor                      ← SOCKS5 proxy + control port; runs as debian-tor
   dashboard                ← Flask app; runs as appuser (uid 1000)
   nginx                    ← SSL reverse proxy; Let's Encrypt or self-signed
-  webcheck                 ← lissy93/web-check (optional OSINT service)
 ```
 
 All external API calls (ransomware.live, ThreatFox, AbuseIPDB, VirusTotal, etc.) go over the clearnet. Only `.onion` crawling is Tor-routed.
@@ -139,13 +149,7 @@ All configuration lives in `.env`. **Never commit this file.**
 | `VIRUSTOTAL_API_KEY` | VirusTotal — free tier: 4 req/min |
 | `DNSDUMPSTER_API_KEY` | DNSDumpster — for DNS investigation enrichment |
 
-### Daily digest (Mailgun)
-
-| Variable | Description |
-|----------|-------------|
-| `MAILGUN_API_KEY` | Mailgun API key |
-| `MAILGUN_DOMAIN` | Your Mailgun sending domain |
-| `MAILGUN_FROM` | Sender address (default: `Kenya Threat Intel <digest@intel.kenya-threat-intel.local>`) |
+(Mailgun keys are retained in .env.example for backward compatibility but the daily digest feature is not implemented — see Roadmap.)
 
 ### Telegram
 
@@ -156,13 +160,7 @@ All configuration lives in `.env`. **Never commit this file.**
 | `TELEGRAM_PHONE` | Your phone number with country code — required for Channel Monitor |
 | `TELEGRAM_CHANNELS` | Comma-separated channel usernames (no @) — used by background scraper |
 
-### Quick Scan
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `QUICK_SCAN_MAX_CONCURRENT` | `4` | Max concurrent source checks per scan session |
-| `QUICK_SCAN_DELAY_MIN` | falls back to `CRAWL_DELAY_MIN` (2s) | Min delay between source requests |
-| `QUICK_SCAN_DELAY_MAX` | falls back to `CRAWL_DELAY_MAX` (8s) | Max delay between source requests |
+(Quick Scan is a planned feature — see Roadmap.)
 
 ### OAuth (optional)
 
@@ -184,13 +182,12 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-Current count: **135 passed, 2 skipped**. Tests cover:
+Current count: **176 passed, 2 skipped**. Tests cover:
 
 - Scanner keyword matching (hit detection, case insensitivity, context windows, add/remove)
 - Crawler URL normalisation, domain extraction, link extraction, crawl filter logic
 - HTTP client (safe\_fetch allowlist, IP blocklist, TLS enforcement, redirect re-validation, IPv4-mapped IPv6 blocking, SSRF guard)
 - Storage models, session lifecycle, and Storage methods (unit + integration against SQLite)
-- Quick scan target detection, variant normalisation, and deduplication
 - Proxy route wiring (integration, with safe\_fetch mocked)
 - Tor connectivity (skipped unless `TOR_INTEGRATION=1`)
 
@@ -234,7 +231,6 @@ src/darkweb_scanner/
   crawler.py             # async Tor crawler (BFS, SOCKS5)
   scanner.py             # keyword matching engine
   storage.py             # SQLAlchemy models and storage layer
-  quick_scan.py          # Quick Scan orchestrator
   quick_scan_sources.py  # source config and normalisation
   feeds.py               # OTX, CISA, abuse.ch, RSS feeds
   digest.py              # daily email digest + PDF

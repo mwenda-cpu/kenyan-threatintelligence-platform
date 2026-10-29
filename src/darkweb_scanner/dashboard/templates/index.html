@@ -1516,8 +1516,15 @@
         <button class="dns-view-btn" onclick="dnsSetView('certs',this)">LOCK Cert History</button>
       </div>
     </div>
-    <div id="dnsContent" style="padding:0;">
-      <div class="empty" style="padding:60px 0;">
+      <div id="dnsContent" style="padding:0;">
+        <!-- Firewall honesty banner -->
+        <div style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.5);color:#f6e05e;padding:10px 16px;border-radius:8px;margin-bottom:12px;font-size:.82rem;display:flex;align-items:flex-start;gap:8px;">
+          <span style="font-size:1.1rem;line-height:1">⚠️</span>
+          <div>
+            Active port scans and directory enumeration require direct network access to the target. From a typical internet-connected machine, the target's firewall will likely block these probes and return 0 results — this is expected behavior, not a failure.
+          </div>
+        </div>
+        <div class="empty" style="padding:60px 0;">
         <div class="icon"></div>
         <p>Enter a domain to start Infrastructure Recon</p>
         <p style="color:var(--muted);font-size:.8rem;margin-top:8px">DNS . Subdomains . Brute-force . Port Scan . Dir Enum . crt.sh . Geolocation</p>
@@ -5464,12 +5471,12 @@
       </div>`;
     }
 
-    // Scan ran but no open ports -> show "No open ports found"
+    // Scan ran but no open ports -> show honest firewalled message
     if (Object.keys(portsData).length === 0) {
       return `<div style="text-align:center;padding:40px 20px">
         <div style="font-size:2rem;margin-bottom:12px"></div>
-        <div style="font-weight:600;margin-bottom:6px;color:var(--green)">No open ports found</div>
-        <div style="color:var(--muted);font-size:.83rem;margin-bottom:16px">All ${mainIPs.length} scanned IPs had all 30 common ports closed or filtered.</div>
+        <div style="font-weight:600;margin-bottom:6px;color:var(--yellow)">No open ports found</div>
+        <div style="color:var(--muted);font-size:.83rem;margin-bottom:16px">0 open ports (target likely firewalled — expected from outside the target's network). All ${mainIPs.length} scanned IPs had all 30 common ports closed or filtered.</div>
         <div style="margin-top:10px;font-size:.75rem;color:var(--muted)">Scans ${mainIPs.length} IPs across 30 common ports</div>
       </div>`;
     }

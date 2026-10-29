@@ -34,7 +34,8 @@ def shodan_search(query):
             })
         return {"results": results}
     except Exception as exc:
-        return {"error": str(exc), "results": []}
+        print(f"[Exposure Intel] Shodan error: {exc}")
+        return {"error": "API Connection Failed. Check logs for details.", "results": []}
 
 
 def urlscan_search(query):
@@ -55,7 +56,8 @@ def urlscan_search(query):
             })
         return {"results": results}
     except Exception as exc:
-        return {"error": str(exc), "results": []}
+        print(f"[Exposure Intel] URLScan error: {exc}")
+        return {"error": "API Connection Failed. Check logs for details.", "results": []}
 
 
 def greynoise_community(ip):
@@ -67,4 +69,5 @@ def greynoise_community(ip):
         resp = safe_fetch(url, headers={"key": key})
         return {"result": json.loads(resp["body"])}
     except Exception as exc:
-        return {"error": str(exc), "result": {}}
+        print(f"[Exposure Intel] GreyNoise error: {exc}")
+        return {"error": "API Connection Failed. Check logs for details.", "result": {}}

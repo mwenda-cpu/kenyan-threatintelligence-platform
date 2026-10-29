@@ -13,3 +13,6 @@ data/
 *.pem
 *.key
 Caddyfile
+
+src/*.egg-info
+*.egg-info/
