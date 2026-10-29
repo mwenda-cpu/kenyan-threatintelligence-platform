@@ -36,6 +36,16 @@ def current_user_id() -> Optional[int]:
     return session.get("user_id")
 
 
+def get_current_user():
+    """Return the logged-in User object, or None when nobody is logged in."""
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    from .storage import get_storage
+
+    return get_storage().get_user_by_id(user_id)
+
+
 def is_authenticated() -> bool:
     return bool(session.get("logged_in") and session.get("user_id"))
 

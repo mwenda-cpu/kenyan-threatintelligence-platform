@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Dark Web Scanner — Create Admin Account</title>
+  <title>Dark Web Scanner — Create Account</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -43,11 +43,11 @@
 <body>
   <div class="card">
     <div class="logo">
-      <h1>Create Admin Account</h1>
+      <h1>Create Account</h1>
     </div>
 
     <div class="first-run">
-      ⚠️ First-time setup — create the administrator account. This page is only available once.
+      Create your account — you will receive a verification email before you can sign in.
     </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -62,8 +62,8 @@
         <input type="text" id="username" name="username" required autocomplete="username"/>
       </div>
       <div class="form-group">
-        <label for="email">Email <span style="color:var(--muted)">(optional)</span></label>
-        <input type="email" id="email" name="email" autocomplete="email"/>
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autocomplete="email"/>
       </div>
       <div class="form-group">
         <label for="password">Password</label>
