@@ -825,7 +825,7 @@
   <div class="hd-kpi clickable" role="button" tabindex="0" title="Go to Top Active Groups" onclick="hdKpiGo('groups')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hdKpiGo('groups');}"><div class="hd-kpi-val" style="color:var(--red)" id="hdKpiGroups">-</div><div class="hd-kpi-lbl">RW Groups</div></div>
   <div class="hd-kpi clickable" role="button" tabindex="0" title="Go to Recent Victims" onclick="hdKpiGo('victims')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hdKpiGo('victims');}"><div class="hd-kpi-val" style="color:var(--orange)" id="hdKpiVictims">-</div><div class="hd-kpi-lbl">Total Victims</div></div>
   <div class="hd-kpi clickable" role="button" tabindex="0" title="Go to Ransomware Press" onclick="hdKpiGo('press')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hdKpiGo('press');}"><div class="hd-kpi-val" style="color:var(--yellow)" id="hdKpiPress">-</div><div class="hd-kpi-lbl">Press Reports</div></div>
-  <div class="hd-kpi clickable" role="button" tabindex="0" title="Go to Kenya Context" onclick="hdKpiGo('hits')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hdKpiGo('hits');}"><div class="hd-kpi-val" id="hdKpiCrawlHits">-</div><div class="hd-kpi-lbl">Crawl Hits</div></div>
+   <div class="hd-kpi clickable" role="button" tabindex="0" title="Go to Dashboard / Keyword Hits" onclick="hdKpiGo('hits')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hdKpiGo('hits');}"><div class="hd-kpi-val" id="hdKpiCrawlHits">-</div><div class="hd-kpi-lbl">Crawl Hits</div></div>
   <div class="hd-kpi clickable" role="button" tabindex="0" title="Go to Seeds" onclick="hdKpiGo('seeds')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hdKpiGo('seeds');}"><div class="hd-kpi-val" style="color:var(--green)" id="hdKpiSeeds">-</div><div class="hd-kpi-lbl">Seeds</div></div>
         <div class="hd-kpi clickable" role="button" tabindex="0" title="Go to Manage Keywords" onclick="hdKpiGo('keywords')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();hdKpiGo('keywords');}"><div class="hd-kpi-val" style="color:var(--purple)" id="hdKpiKeywords">-</div><div class="hd-kpi-lbl">Keywords</div></div>
     </div>
@@ -6586,7 +6586,7 @@
     groups:   { tab: null,        el: 'hdGroupFeed'  },  // Top Active Groups
     victims:  { tab: null,        el: 'hdVictimFeed' },  // Recent Victims
     press:    { tab: null,        el: 'hdPressFeed'  },  // Ransomware Press
-    hits:     { tab: 'ke-context', el: 'keCaTable'   },  // Kenya Context / Actionable Hits
+    hits:     { tab: null,          el: null         },   // Scroll only (stays on dashboard, no navigation)
     seeds:    { tab: 'seeds',      el: 'seedsList'   },  // Seeds panel
     keywords: { tab: 'keywords',   el: 'keywordsList'},  // Manage Keywords panel
   };
@@ -6595,6 +6595,7 @@
     const target = HD_KPI_TARGETS[key];
     if (!target) return;
     const scrollTo = () => {
+      if (!target.el) return;
       const el = document.getElementById(target.el);
       if (!el) { console.warn('[hdKpiGo] target not found:', target.el); return; }
       const card = el.closest('.hd-card') || el;
