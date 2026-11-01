@@ -243,22 +243,45 @@ def fetch_kenya_press(limit: int = 20) -> List[Dict]:
     except Exception as e:
         log.warning('ransomware.live press fetch failed: %s', e)
 
-    # 3. Sort by source priority (NC4 Official first), then date descending
+    # 3. Interleave NC4 Official and TechTrendsKE items so both sources are
+    #    visible instead of grouping all NC4 first. ransomware.live items
+    #    are appended at the end.
+    nc4_items = [it for it in items if it.get('source') == 'NC4 Official']
+    other_items = [it for it in items if it.get('source') != 'NC4 Official']
+    interleaved: List[Dict] = []
+    max_len = max(len(nc4_items), len(other_items))
+    for i in range(max_len):
+        if i < len(nc4_items):
+            interleaved.append(nc4_items[i])
+        if i < len(other_items):
+            interleaved.append(other_items[i])
+    items = interleaved
+
+    # 4. Sort within each source group by date descending (newest first).
     def _sort_key(it):
-        source_priority = 0 if it['source'] == 'NC4 Official' else 1
         try:
             d = parsedate_to_datetime(it['date'])
             if d.tzinfo is not None:
                 d = d.replace(tzinfo=None)
         except Exception:
             try:
-                d = datetime.datetime.fromisoformat(it['date'].replace('Z','+00:00'))
+                d = datetime.datetime.fromisoformat(it['date'].replace('Z', '+00:00'))
                 if d.tzinfo is not None:
                     d = d.replace(tzinfo=None)
             except Exception:
                 d = datetime.datetime(1970, 1, 1)
-        # Negate date so newest-first; source_priority ensures NC4 floats to top
-        return (source_priority, -d.toordinal())
+        return -d.toordinal()
 
-    items.sort(key=_sort_key)
+    nc4_part = [it for it in items if it.get('source') == 'NC4 Official']
+    other_part = [it for it in items if it.get('source') != 'NC4 Official']
+    nc4_part.sort(key=_sort_key)
+    other_part.sort(key=_sort_key)
+    items = []
+    max_len = max(len(nc4_part), len(other_part))
+    for i in range(max_len):
+        if i < len(nc4_part):
+            items.append(nc4_part[i])
+        if i < len(other_part):
+            items.append(other_part[i])
+
     return items[:limit]

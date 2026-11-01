@@ -17,6 +17,7 @@ Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: aiohttp>=3.9
 Requires-Dist: aiohttp-socks>=0.8
+Requires-Dist: apscheduler>=3.10
 Requires-Dist: beautifulsoup4>=4.12
 Requires-Dist: lxml>=5.0
 Requires-Dist: stem>=1.8
@@ -24,14 +25,19 @@ Requires-Dist: sqlalchemy>=2.0
 Requires-Dist: pyyaml>=6.0
 Requires-Dist: click>=8.1
 Requires-Dist: python-dotenv>=1.0
+Requires-Dist: PySocks>=1.7
+Requires-Dist: pypdf>=5.0
+Requires-Dist: requests>=2.31
 Provides-Extra: dashboard
 Requires-Dist: flask>=3.0; extra == "dashboard"
 Requires-Dist: gunicorn>=21.0; extra == "dashboard"
+Requires-Dist: apscheduler>=3.10; extra == "dashboard"
 Requires-Dist: bcrypt>=4.0; extra == "dashboard"
 Requires-Dist: pyotp>=2.9; extra == "dashboard"
 Requires-Dist: qrcode>=7.4; extra == "dashboard"
 Requires-Dist: pillow>=10.0; extra == "dashboard"
-Requires-Dist: requests>=2.31; extra == "dashboard"
+Requires-Dist: requests[socks]>=2.31; extra == "dashboard"
+Requires-Dist: pdfplumber>=0.10; extra == "dashboard"
 Requires-Dist: telethon>=1.36; extra == "dashboard"
 Requires-Dist: reportlab>=4.0; extra == "dashboard"
 Requires-Dist: deep-translator>=1.11; extra == "dashboard"
@@ -41,6 +47,12 @@ Requires-Dist: dnspython>=2.4; extra == "dashboard"
 Requires-Dist: matplotlib>=3.7; extra == "dashboard"
 Requires-Dist: numpy>=1.24; extra == "dashboard"
 Requires-Dist: playwright>=1.40; extra == "dashboard"
+Requires-Dist: pdfplumber>=0.10; extra == "dashboard"
+Requires-Dist: feedparser>=6.0; extra == "dashboard"
+Requires-Dist: scikit-learn>=1.4; extra == "dashboard"
+Requires-Dist: pandas>=2.0; extra == "dashboard"
+Requires-Dist: joblib>=1.3; extra == "dashboard"
+Requires-Dist: prophet>=1.1; extra == "dashboard"
 Provides-Extra: dev
 Requires-Dist: pytest-asyncio>=0.23; extra == "dev"
 Requires-Dist: pytest-cov>=4.1; extra == "dev"
@@ -67,36 +79,52 @@ Requires-Dist: gunicorn>=21.0; extra == "all"
 Requires-Dist: matplotlib>=3.7; extra == "all"
 Requires-Dist: numpy>=1.24; extra == "all"
 Requires-Dist: playwright>=1.40; extra == "all"
+Requires-Dist: pdfplumber>=0.10; extra == "all"
+Requires-Dist: scikit-learn>=1.4; extra == "all"
+Requires-Dist: pandas>=2.0; extra == "all"
+Requires-Dist: joblib>=1.3; extra == "all"
+Requires-Dist: prophet>=1.1; extra == "all"
 Dynamic: license-file
 
 # threatintel-platform
 
-A self-hosted, open-source threat intelligence platform built for the Philippine and Southeast Asian security landscape. Crawls .onion networks, monitors Telegram channels, tracks ransomware groups, profiles threat actors, and delivers a daily intelligence digest — all from a single Docker Compose deployment.
+A self-hosted, open-source threat intelligence platform built for the Kenyan Government and Financial Sector. Crawls .onion networks, monitors Telegram channels, tracks ransomware groups, profiles threat actors, and delivers a daily intelligence digest — all from a single Docker Compose deployment.
 
 **Version: 1.1.0 · License: AGPL-3.0**
 
 ---
 
-## Features
+## Features (Verified Working)
 
-- **Dark Web Crawler** — async Tor-based crawler for .onion sites, configurable keyword monitoring, real-time webhook and email alerts
-- **Quick Scan** — on-demand OSINT sweep of any domain, IP, URL, or company name across configured sources, with live progress and cancellation
-- **Intelligence Dashboard** — start page with live threat level, ransomware victim feed, group rankings, SEA country breakdown, ThreatFox IOC mini-feed, and press headlines
-- **ransomware.live PRO Integration** — 324+ tracked groups, 26 000+ victims, IOCs, negotiation chats, ransom notes, YARA rules, SEC 8-K filings, CSIRT directory
-- **IOC Feed** — live indicators of compromise from ThreatFox, URLhaus, and Feodo Tracker with search, type filtering, and confidence scoring
-- **Ransomware Tracker** — live tracking with SEA/PH regional focus, victim counts, and SEA-targeting flags
-- **Threat Actor Profiles** — structured APT and cybercriminal profiles relevant to Southeast Asia
-- **DNS Investigations** — passive + active DNS recon, subdomain brute-force (50 workers), TCP port scan (30 ports), HTTP directory enumeration, crt.sh certificate transparency, zone transfer attempts, SPF/DMARC/DKIM scoring, interactive subdomain graph, PDF export with world map
-- **IP Investigation** — parallel AbuseIPDB + VirusTotal lookups with geolocation, ASN, and history
-- **WhatsMyName Username Check** — checks a username across 200+ sites concurrently
-- **OSINT Domain Intel** — proxied access to Shodan, Censys, GreyNoise, URLScan, MXToolbox, SecurityTrails, VirusTotal, RDAP/WHOIS, and GitHub/Reddit/Discord/TikTok OSINT profiles
-- **ThreatFox / URLhaus / AbuseIPDB proxies** — backend-proxied API calls to avoid CORS and keep keys server-side
-- **Channel Monitor** — on-demand Telegram channel scraping from the dashboard, auto-translated to English, with media download and ZIP export
-- **Telegram Scraper** — background monitoring of configured public channels for keyword hits
-- **Projects** — scoped monitoring engagements with per-project keywords, target domains, entities, and hit tracking
-- **PDF Report Generation** — ReportLab + Playwright-rendered world map for DNS investigations; digest PDF via Mailgun
-- **Daily Digest** — morning email with CISA KEV, OTX pulses, abuse.ch feeds, and curated RSS
-- **Authentication** — bcrypt passwords, TOTP 2FA, optional Google/GitHub/Microsoft/Apple OAuth, role-based access control (admin / analyst)
+- **Dark Web Crawler** — async Tor-based crawler for .onion sites with configurable Kenyan keyword monitoring.
+- **Telegram Channel Monitor** — on-demand scraping of public Telegram OSINT channels (StringSession auth, Stop Scan support, ZIP export). Keyword hits persist to the threat hits database.
+- **Threat Intelligence REST API v1** — read-only API at `/api/v1/*` with 14 endpoints authenticated via `X-API-Key` header. See `API.md`.
+- **STIX 2.1 Export** — `/api/v1/export/stix` returns up to 100 latest IOCs as STIX 2.1 indicator objects for MISP/Splunk/TheHive ingest.
+- **Webhook Alerting** — `/api/v1/alerts/test` and crawler hits POST to a configurable `ALERT_WEBHOOK_URL` (Slack/Teams/Discord).
+- **Suricata IDS Integration** — custom DDoS rules (HTTP/HTTPS/ICMP flood), `eve.json` parser running as a background thread every 15 s, hits stored in the same threat hits table and shown on the "Network Alerts" dashboard tab.
+- **KE-CIRT Advisory Ingestion** — automated ingestion of KE-CIRT/CC, CAK, and CBK PDF advisories (`data/ke_reports/`) into the `ke_cirt_advisories` table with date extraction, summary cleaning, and a dashboard tab.
+- **Fintech IOC Correlation Engine** — `/api/v1/fintech/watchlist`, `/api/v1/fintech/lookup`, `/api/v1/fintech/flagged`. Real-world IOC watchlist that financial SOCs query to check suspicious IPs/phones against dark web and KE-CIRT intel.
+- **Audit Log** — `audit_log` table + `/api/v1/audit` endpoint + dashboard tab. Every STIX export, webhook send, and report download is logged with actor, IP, and user-agent.
+- **Sector Filtering** — `/api/v1/threats?sector=fintech|government|banking` and a dashboard dropdown to isolate threats by sector.
+- **Self-Registration with Verification** — bcrypt passwords, email verification via Resend API, and admin approval workflow. `/admin/pending_users` for admin approval.
+- **KE-CIRT STIX Sharing** — `scripts/push_to_ke_cirt.py` posts the STIX bundle to a configurable `KE_CIRT_WEBHOOK_URL` for outbound intelligence sharing.
+- **Production Suricata Override** — `docker-compose.prod.suricata.yml` uses `network_mode: host` for institutional perimeter deployment.
+- **DNS Reconnaissance** — passive subdomain enumeration, A/NS/MX record lookups, ASN geolocation, and subdomain graph visualization. Note: active port scans and directory enumeration require network-level access to the target; from a typical internet-connected laptop, they will return 0 results because the target's firewall blocks the requests — this is expected real-world behavior, not a bug.
+
+## Verified as of October 29, 2026
+
+All features under "Features (Verified Working)" have been tested end-to-end on a Docker Compose deployment. Every listed endpoint has been verified with `curl` against a live API key. The "Roadmap" section lists features that are NOT in the current build.
+
+## Roadmap (Planned, Not Implemented)
+
+- Quick Scan (on-demand OSINT sweep)
+- Full DNS Investigation suite (Playwright-rendered world map PDF export, aggressive brute-force at scale)
+- ransomware.live PRO negotiation-chat / YARA / SEC 8-K UI panels
+- WhastMyName username check
+- Projects (scoped monitoring engagements)
+- Daily Digest (Mailgun morning email)
+- 2FA / OAuth end-to-end (code exists in auth.py, untested in CI)
+- webcheck sidecar service
 
 ---
 
@@ -120,7 +148,6 @@ docker-compose
   tor                      ← SOCKS5 proxy + control port; runs as debian-tor
   dashboard                ← Flask app; runs as appuser (uid 1000)
   nginx                    ← SSL reverse proxy; Let's Encrypt or self-signed
-  webcheck                 ← lissy93/web-check (optional OSINT service)
 ```
 
 All external API calls (ransomware.live, ThreatFox, AbuseIPDB, VirusTotal, etc.) go over the clearnet. Only `.onion` crawling is Tor-routed.
@@ -143,7 +170,7 @@ N+1 queries on the ransomware groups and threat actors endpoints have been colla
 ### Quick deploy
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/osintph/threatintel-platform/main/deploy.sh \
+curl -fsSL https://raw.githubusercontent.com/mwenda-cpu/kenyan-threatintelligence-platform/main/deploy.sh \
   -o /tmp/deploy.sh && sudo bash /tmp/deploy.sh
 ```
 
@@ -216,7 +243,7 @@ All configuration lives in `.env`. **Never commit this file.**
 |----------|-------------|
 | `MAILGUN_API_KEY` | Mailgun API key |
 | `MAILGUN_DOMAIN` | Your Mailgun sending domain |
-| `MAILGUN_FROM` | Sender address (default: `OSINT PH Threat Intel <digest@intel.osintph.info>`) |
+| `MAILGUN_FROM` | Sender address (default: `Kenya Threat Intel <digest@intel.kenya-threat-intel.local>`) |
 
 ### Telegram
 
@@ -270,7 +297,7 @@ Current count: **135 passed, 2 skipped**. Tests cover:
 ## Development Setup
 
 ```bash
-git clone https://github.com/osintph/threatintel-platform
+git clone https://github.com/mwenda-cpu/kenyan-threatintelligence-platform
 cd threatintel-platform
 python -m venv .venv
 source .venv/bin/activate
@@ -365,8 +392,11 @@ See the [LICENSE](LICENSE) file for the full text.
 
 ## Contributing
 
-Pull requests are welcome. If you're a Philippine or Southeast Asian security researcher and want to collaborate on keyword lists, threat actor data, or regional intelligence coverage — please reach out.
 
-Issues and feature requests: https://github.com/osintph/threatintel-platform/issues
+Issues and feature requests: https://github.com/mwenda-cpu/kenyan-threatintelligence-platform/issues
 
-OSINT PH: https://www.osintph.info
+
+## External API
+See API.md for the read-only Threat Intelligence REST API (auth header, endpoints, curl examples).
+Rate limiting: none by default.
+All endpoints return JSON.

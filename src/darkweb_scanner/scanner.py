@@ -75,7 +75,7 @@ class Scanner:
         chrome (leak-site menus, onion lists, crypto dumps) never reaches the
         database. An empty string means the match was only navigation noise.
         """
-        window = min(int(self.config.context_window or 200), 140)
+        window = min(int(self.config.context_window or 200), 100)
         start = max(0, match.start() - window)
         end = min(len(text), match.end() + window)
         snippet = clean_snippet(text[start:end], keep=keyword, max_len=SNIPPET_LEN)

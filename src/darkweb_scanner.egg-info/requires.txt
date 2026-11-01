@@ -1,5 +1,6 @@
 aiohttp>=3.9
 aiohttp-socks>=0.8
+apscheduler>=3.10
 beautifulsoup4>=4.12
 lxml>=5.0
 stem>=1.8
@@ -7,6 +8,9 @@ sqlalchemy>=2.0
 pyyaml>=6.0
 click>=8.1
 python-dotenv>=1.0
+PySocks>=1.7
+pypdf>=5.0
+requests>=2.31
 
 [all]
 bcrypt>=4.0
@@ -26,15 +30,22 @@ gunicorn>=21.0
 matplotlib>=3.7
 numpy>=1.24
 playwright>=1.40
+pdfplumber>=0.10
+scikit-learn>=1.4
+pandas>=2.0
+joblib>=1.3
+prophet>=1.1
 
 [dashboard]
 flask>=3.0
 gunicorn>=21.0
+apscheduler>=3.10
 bcrypt>=4.0
 pyotp>=2.9
 qrcode>=7.4
 pillow>=10.0
-requests>=2.31
+requests[socks]>=2.31
+pdfplumber>=0.10
 telethon>=1.36
 reportlab>=4.0
 deep-translator>=1.11
@@ -44,6 +55,11 @@ dnspython>=2.4
 matplotlib>=3.7
 numpy>=1.24
 playwright>=1.40
+feedparser>=6.0
+scikit-learn>=1.4
+pandas>=2.0
+joblib>=1.3
+prophet>=1.1
 
 [dev]
 pytest-asyncio>=0.23

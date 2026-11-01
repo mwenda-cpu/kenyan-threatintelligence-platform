@@ -413,8 +413,17 @@ def get_ransomware_tab_data() -> dict:
 # Kenya/East Africa names without duplicating fetch logic.
 
 def get_ke_victims(limit: int = 200) -> list:
-    """East Africa victims — aliases the SEA fetcher."""
-    return get_sea_victims(limit=limit)
+    """Kenya-only victims (country=KE), not the wider East Africa set."""
+    seen = set()
+    out = []
+    for v in get_victims(country="KE", limit=limit):
+        vid = v.get("id") or (str(v.get("victim","")) + str(v.get("attackdate","")))
+        if vid not in seen:
+            seen.add(vid)
+            v["_sea_country"] = SEA_NAMES.get("KE", "KE")
+            out.append(v)
+    out.sort(key=lambda x: x.get("attackdate", ""), reverse=True)
+    return out[:limit]
 
 
 def get_ke_press(limit: int = 30) -> list:

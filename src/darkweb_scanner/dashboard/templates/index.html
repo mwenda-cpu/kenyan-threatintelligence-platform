@@ -849,8 +849,8 @@
     </div>
   </div>
 
-  <!-- Row 2: IOCs + KE breakdown + Quick Actions -->
-  <div class="hd-grid">
+  <!-- Row 2: IOCs + Sector Breakdown + CVE News + Quick Actions -->
+  <div class="hd-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
     <div class="hd-card">
       <div class="hd-card-hdr">
         <div class="hd-card-title">IOC Latest IOCs - ThreatFox</div>
@@ -860,18 +860,18 @@
     </div>
     <div class="hd-card">
       <div class="hd-card-hdr">
-        <div class="hd-card-title"> East Africa Victim Breakdown</div>
+        <div class="hd-card-title">Sector Victim Breakdown</div>
       </div>
-      <div class="hd-card-body" id="hdKeBars">
-  <div class="hd-bar-row"><div class="hd-bar-label">Kenya</div><div class="hd-bar-track"><div class="hd-bar-fill" style="width:0%;background:var(--red)" id="hdBarKE"></div></div><div class="hd-bar-count" id="hdCntKE">-</div></div>
-  <div class="hd-bar-row"><div class="hd-bar-label">Tanzania</div><div class="hd-bar-track"><div class="hd-bar-fill" style="width:0%;background:var(--orange)" id="hdBarTZ"></div></div><div class="hd-bar-count" id="hdCntTZ">-</div></div>
-  <div class="hd-bar-row"><div class="hd-bar-label">Uganda</div><div class="hd-bar-track"><div class="hd-bar-fill" style="width:0%;background:var(--yellow)" id="hdBarUG"></div></div><div class="hd-bar-count" id="hdCntUG">-</div></div>
-  <div class="hd-bar-row"><div class="hd-bar-label">Rwanda</div><div class="hd-bar-track"><div class="hd-bar-fill" style="width:0%;background:var(--accent)" id="hdBarRW"></div></div><div class="hd-bar-count" id="hdCntRW">-</div></div>
-  <div class="hd-bar-row"><div class="hd-bar-label">Ethiopia</div><div class="hd-bar-track"><div class="hd-bar-fill" style="width:0%;background:var(--purple)" id="hdBarET"></div></div><div class="hd-bar-count" id="hdCntET">-</div></div>
-  <div class="hd-bar-row"><div class="hd-bar-label">Somalia</div><div class="hd-bar-track"><div class="hd-bar-fill" style="width:0%;background:var(--muted)" id="hdBarSO"></div></div><div class="hd-bar-count" id="hdCntSO">-</div></div>
-  <div style="margin-top:8px;font-size:.65rem;color:var(--muted)">Based on ransomware.live victim data</div>
-</div>
-      </div >
+      <div class="hd-card-body" id="hdSectorBars">
+        <div style="color:var(--muted);font-size:.78rem;padding:8px 0">Loading sector data...</div>
+      </div>
+    </div>
+    <div class="hd-card">
+      <div class="hd-card-hdr">
+        <div class="hd-card-title">Recent CVE News</div>
+        <button class="hd-card-action" onclick="hdGoTo('cve-panel')">CVE Panel </button>
+      </div>
+      <div class="hd-card-body" id="hdCveNews"><div style="color:var(--muted);font-size:.78rem;padding:8px 0">Loading CVE data...</div></div>
     </div>
     <div class="hd-card">
       <div class="hd-card-hdr"><div class="hd-card-title"> Quick Actions</div></div>
@@ -2389,7 +2389,7 @@
           <td><span class="keyword-tag">${esc(h.keyword)}</span></td>
           <td><span class="cat-tag">${esc(h.category)}</span></td>
           <td class="url-cell"><a href="${esc(h.source_url || h.url)}" target="_blank" rel="noopener noreferrer">${esc(h.source_url || h.url)}</a></td>
-          <td class="ctx-cell">${esc((h.context||'').slice(0,200))}</td>
+          <td class="ctx-cell" title="${esc(h.context||'')}">${esc((h.context||'').slice(0,240))}</td>
           <td class="time-cell">${fmtTime(h.found_at)}</td>
         </tr>`).join('')}</tbody>
       </table>`;
@@ -3042,7 +3042,7 @@
         <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
           <a href="${h.url}" target="_blank" style="color:var(--accent);font-size:.78rem">${h.url.replace('https://','')}</a>
         </td>
-        <td style="font-size:.78rem;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(h.context||'').replace(/"/g,'&quot;')}">${h.context ? h.context.slice(0,80)+'...' : '-'}</td>
+        <td style="font-size:.78rem;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(h.context||'').replace(/"/g,'&quot;')}">${h.context ? h.context.slice(0,140)+'...' : '-'}</td>
         <td style="font-size:.75rem;white-space:nowrap;color:var(--muted)">${h.found_at ? h.found_at.slice(0,16).replace('T',' ') : '-'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
@@ -6621,6 +6621,8 @@
     hdLoadGroups();
     hdLoadIocMini();
     hdLoadPress();
+    hdLoadSectorBars();
+    hdLoadCveNews();
     hdCheckStatus();
   }
 
@@ -6718,7 +6720,7 @@
       // slow upstream call and must not hold up the list.
       el.innerHTML = d.data.slice(0,10).map((v, i) => {
         const date = (v.attackdate||'').slice(0,10);
-        const ke  = ['KE','TZ','UG','RW','BI','ET','SO','DJ','ER','SS'].includes((v.country||'').toUpperCase());
+        const ke  = (v.country||'').toUpperCase() === 'KE';
         return `<div class="hd-victim-row hd-victim-clickable" role="button" tabindex="0"
                      title="Click for details" onclick="openVictimModal(${i})"
                      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openVictimModal(${i});}">
@@ -6765,6 +6767,76 @@
     } else {
       tlSub.textContent = keCount + ' recent KE victims';
     }
+  }
+
+  // ── Sector Victim Breakdown ──
+  async function hdLoadSectorBars() {
+    const el = document.getElementById('hdSectorBars');
+    try {
+      const r = await fetch('/api/breaches/directory');
+      const d = await r.json();
+      const breaches = (d && d.breaches) || [];
+      if (!breaches.length) {
+        el.innerHTML = '<div style="color:var(--muted);font-size:.78rem;padding:8px 0">No sector victim data available. Run the breach backfill to populate.</div>';
+        return;
+      }
+      const counts = {};
+      breaches.forEach(b => {
+        const s = (b.sector || 'Unknown').toString();
+        counts[s] = (counts[s] || 0) + 1;
+      });
+      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+      const max = Math.max(...entries.map(e => e[1]), 1);
+      el.innerHTML = entries.map(([sector, count]) => {
+        const pct = Math.round((count / max) * 100);
+        return `<div class="hd-bar-row" style="margin-bottom:6px">
+          <div class="hd-bar-label" style="font-size:.72rem;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sector)}</div>
+          <div class="hd-bar-track" style="flex:1"><div class="hd-bar-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+          <div class="hd-bar-count" style="font-size:.72rem;color:var(--muted);min-width:24px">${count}</div>
+        </div>`;
+      }).join('');
+      el.innerHTML += `<div style="margin-top:8px;font-size:.65rem;color:var(--muted)">Based on breach directory victim data</div>`;
+    } catch(e) {
+      el.innerHTML = '<div style="color:var(--red);font-size:.78rem">Error loading sector data.</div>';
+    }
+  }
+
+  // ── Recent CVE News ──
+  async function hdLoadCveNews() {
+    const el = document.getElementById('hdCveNews');
+    try {
+      const r = await fetch('/api/cve/alerts');
+      const d = await r.json();
+      const items = (d && Array.isArray(d) ? d : []).slice(0, 8);
+      if (!items.length) {
+        el.innerHTML = '<div style="color:var(--muted);font-size:.78rem;padding:8px 0">No recent CVE data available.</div>';
+        return;
+      }
+      el.innerHTML = items.map(c => {
+        const cveId = c.cve_id || 'CVE';
+        const asset = c.asset_name || 'Unknown asset';
+        const sector = c.sector || 'Unknown';
+        const score = c.cvss_score != null ? Number(c.cvss_score).toFixed(1) : '-';
+        const date = (c.created_at || '').slice(0, 10);
+        const kev = c.kev_flag ? ' <span style="color:var(--red);font-weight:700">[KEV]</span>' : '';
+        return `<div class="hd-press-item" style="cursor:pointer" onclick="openCveDetail('${esc(cveId)}')">
+          <div class="hd-press-title" style="font-size:.78rem">${esc(cveId)}${kev}</div>
+          <div class="hd-press-meta" style="font-size:.7rem">
+            <span style="margin-right:8px">${esc(asset)}</span>
+            <span style="margin-right:8px">${esc(sector)}</span>
+            <span style="margin-right:8px">CVSS ${score}</span>
+            ${esc(date)}
+          </div>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      el.innerHTML = '<div style="color:var(--red);font-size:.78rem">Error loading CVE data.</div>';
+    }
+  }
+
+  function openCveDetail(cveId) {
+    // Open the CVE panel page with this CVE pre-filtered via query string
+    window.location.href = `/cve-panel?cve=${encodeURIComponent(cveId)}`;
   }
 
   // ── Ransomware victim detail modal ──
