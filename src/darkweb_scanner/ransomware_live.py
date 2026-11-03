@@ -427,8 +427,8 @@ def get_ke_victims(limit: int = 200) -> list:
 
 
 def get_ke_press(limit: int = 30) -> list:
-    """East Africa press — aliases the SEA fetcher."""
-    return get_sea_press(limit=limit)
+    """Kenya-only press (country=KE), not the wider East Africa set."""
+    return get_press_recent(country="KE")[:limit]
 
 
 def get_ke_csirts() -> dict:

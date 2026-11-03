@@ -7053,15 +7053,7 @@
       const d = await r.json();
       const items = (d.ok ? d.data : []).slice(0,6);
       if (!items.length) {
-        // fallback to global recent
-        const r2 = await fetch('/api/rwlive/press/recent');
-        const d2 = await r2.json();
-        const fb = (d2.ok ? d2.data : []).slice(0,6);
-        if (!fb.length) {
-          el.innerHTML = '<div style="color:var(--muted);font-size:.78rem;padding:8px 0">No recent Kenya-focused cybersecurity news. Check that feedparser is installed and the RSS feeds are reachable.</div>';
-          return;
-        }
-        el.innerHTML = fb.map(p => hdPressItem(p)).join('');
+        el.innerHTML = '<div style="color:var(--muted);font-size:.78rem;padding:8px 0">No recent Kenyan press found</div>';
         return;
       }
       el.innerHTML = items.map(p => hdPressItem(p)).join('');
@@ -7073,9 +7065,9 @@
     const url   = p.url || p.link || '#';
     const date  = (p.date||p.published||'').slice(0,10);
     const src   = p.source || p.group || 'news';
-    const isNC4 = src === 'NC4 Official';
+    const isNC4 = src === 'NC4 Kenya';
     const badgeCls = isNC4 ? 'hd-badge--nc4' : '';
-    const badgeLabel = isNC4 ? 'NC4 Official' : esc(src);
+    const badgeLabel = isNC4 ? 'NC4 Kenya' : esc(src);
     const badgeStyle = isNC4 ? 'padding:1px 6px;border-radius:3px;font-size:.6rem;font-weight:700;margin-right:6px' : 'padding:1px 5px;border-radius:3px;background:rgba(88,166,255,.1);color:var(--accent);font-size:.6rem;font-weight:700;margin-right:6px';
     return `<div class="hd-press-item">
       <div class="hd-press-title"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(title)}</a></div>

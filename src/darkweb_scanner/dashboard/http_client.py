@@ -73,6 +73,8 @@ ALLOWED_EXTERNAL_HOSTS: frozenset = frozenset({
     "www.tiktok.com",
     # Data enrichment
     "whiteintel.io",
+    # Kenyan government press (NC4)
+    "nc4.go.ke",
     # Mail infrastructure
     "api.mailgun.net",
     # Quick Scan clearnet paste sources (see quick_scan_sources.py). The dpaste

@@ -89,8 +89,6 @@ services:
   caddy:
     image: caddy:2-alpine
     container_name: darkweb-caddy
-    ports:
-      - "8443:8443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./localhost+2.pem:/etc/caddy/localhost+2.pem:ro

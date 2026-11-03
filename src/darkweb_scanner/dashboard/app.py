@@ -211,16 +211,25 @@ def create_app() -> Flask:
     app.register_blueprint(ti_api)
     app.teardown_appcontext(close_db)
 
-    # ── Database: create tables + populate the onion seed list ──
-    # get_storage() runs create_all() (the `seeds` table exists via the
-    # Storage.Seed model), then we seed it from config/sources.json.
-    _seed_onion_seeds(get_storage())
+    # ── Background startup tasks (onion seeding + scheduler) ──
+    # Run off the boot path so app.run() can bind to port 8080 without
+    # waiting on network/DB work. These run in daemon threads.
+    import threading
 
-    # ── Background scheduler (real-time IOC/ransomware/KE-context collection) ──
-    print(f"[startup] scheduler.is_running() = {is_running()}", flush=True)
-    if not is_running():
-        start()
-    print("[startup] scheduler.start() invoked", flush=True)
+    def _startup_bootstrap() -> None:
+        try:
+            _seed_onion_seeds(get_storage())
+        except Exception as _exc:  # noqa: BLE001 - startup bootstrap is best-effort
+            logging.warning("Onion seed seeding skipped at startup: %s", _exc)
+        try:
+            print(f"[startup] scheduler.is_running() = {is_running()}", flush=True)
+            if not is_running():
+                start()
+            print("[startup] scheduler.start() invoked", flush=True)
+        except Exception as _exc:  # noqa: BLE001 - scheduler is best-effort
+            logging.warning("Scheduler not started: %s", _exc)
+
+    threading.Thread(target=_startup_bootstrap, daemon=True, name="startup_bootstrap").start()
 
     # ── KE-CIRT advisories ingestion (once at startup, then every 6 hours) ──
     try:
@@ -260,7 +269,7 @@ def create_app() -> Flask:
     # contextual_intel on startup. Runs in a daemon thread, wrapped in
     # try/except, and never blocks app boot.
     try:
-        from .scrapers.context_scraper import ingest_ke_reports_async
+        from darkweb_scanner.scrapers.context_scraper import ingest_ke_reports_async
         ingest_ke_reports_async(get_storage())
     except Exception as _exc:  # noqa: BLE001 - auto-ingest is best-effort
         logging.warning("KE auto-ingest skipped at startup: %s", _exc)

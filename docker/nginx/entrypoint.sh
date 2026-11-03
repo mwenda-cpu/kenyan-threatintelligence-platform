@@ -21,7 +21,7 @@ write_nginx_config() {
   cat > /etc/nginx/conf.d/app_vhost.conf <<EOF
 server {
     listen 80;
-    server_name _;
+    server_name threatwatch.osintph.info localhost 127.0.0.1;
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
     location / {
         proxy_pass http://dashboard:8080;
