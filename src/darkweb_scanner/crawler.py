@@ -327,6 +327,12 @@ async def run_onion_crawl_cycle(
                 break
             fetched += 1
             text, error = await _fetch_page(session, url)
+
+            # Record the page crawl attempt so /api/crawl/status can report
+            # pages_crawled correctly (count_session_pages counts CrawledPage rows).
+            status_code = 0 if error else 200
+            storage.save_page(url, status_code, 0, session_id, error)
+
             matched = 0
             if error or not text:
                 storage.increment_seed_attempt(url)

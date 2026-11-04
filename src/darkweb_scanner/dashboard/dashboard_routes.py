@@ -792,7 +792,7 @@ def api_crawl_start():
         _active_scan_thread.start()
         print(f"[crawl] thread started: {_active_scan_thread.name}", flush=True)
 
-        return jsonify({"ok": True, "message": "Crawl started."})
+        return jsonify({"status": "started"}), 202
     except Exception as e:
         logger.error("Crawl start failed: %s", traceback.format_exc())
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -4896,9 +4896,16 @@ def _report_month(row: dict) -> str | None:
     if ym:
         return f"{ym.group(1)}-01"
 
-    ea = str(row.get("extracted_at") or "").strip()
-    if ea and len(ea) >= 7 and ea[4] == "-" and ea[:4].isdigit():
-        return ea[:7]
+    # Fallback: extracted_at or created_at (ISO format from DB).
+    ea = str(row.get("extracted_at") or row.get("created_at") or "").strip()
+    # Handle "YYYY-MM..." or "YYYY-MM-DD..."
+    m = _re.match(r"\b(\d{4})-(\d{2})\b", ea)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    # Handle "YYYY-MM-DDTHH:MM:SS..." (full ISO)
+    m = _re.match(r"\b(\d{4})-(\d{2})-\d{2}[T ].*", ea)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
 
     return None
 
@@ -4916,19 +4923,30 @@ def _ke_ok(data):
 @dashboard_bp.route("/api/ke-context/summary")
 @require_login
 def api_ke_context_summary():
-    ctx = _ke_ctx()
-    cirt = ctx.get_latest_ke_cirt()
+    try:
+        ctx = _ke_ctx()
+        cirt = ctx.get_latest_ke_cirt() or {}
+        cbk = ctx.get_latest_cbk_totals() or {}
+        ca_count = ctx.count_ca_advisories() or 0
+    except Exception as exc:  # noqa: BLE001 - never fail the whole KE page on parsing errors
+        logger.warning("ke-context summary failed: %s", exc)
+        cirt, cbk, ca_count = {}, {}, 0
     if cirt:
-        cirt["file_url"] = _ke_cirt_file_url(
-            cirt.get("title", ""), cirt.get("quarter", ""), cirt.get("year", "")
-        )
-    cbk = ctx.get_latest_cbk_totals()
+        try:
+            cirt["file_url"] = _ke_cirt_file_url(
+                cirt.get("title", ""), cirt.get("quarter", ""), cirt.get("year", "")
+            )
+        except Exception:
+            pass
     if cbk and cbk.get("period"):
-        cbk["file_url"] = _ke_cbk_file_url(cbk["period"])
+        try:
+            cbk["file_url"] = _ke_cbk_file_url(cbk["period"])
+        except Exception:
+            pass
     return _ke_ok(
         {
             "ke_cirt_latest": cirt,
-            "ca_advisory_count": ctx.count_ca_advisories(),
+            "ca_advisory_count": ca_count,
             "cbk_latest": cbk,
         }
     )
@@ -4951,22 +4969,52 @@ def api_ke_context_ca_advisories():
 @dashboard_bp.route("/api/ke-context/cbk-trends")
 @require_login
 def api_ke_context_cbk_trends():
-    """Attack trends derived from ``contextual_intel`` rows.
+    """Attack trends derived from all KE contextual sources.
 
-    Scans only the DB ``title``/``summary`` fields (fast - no PDF reads),
-    counts each report once per threat keyword it mentions, pads series arrays
-    with 0 for missing months, and returns the top 5 keywords ordered by total
-    frequency: ``{"periods": [...], "series": {"<keyword>": [...]}}``.
+    Aggregates KE-CIRT reports, CA advisories, and contextual_intel rows
+    by month and attack type. Returns ``{"labels": [...], "data": [...]}``
+    for the frontend Chart.js line chart.
     """
     from collections import defaultdict
 
+    from ..ke_context import KenyaContext
+
     storage = get_storage()
-    rows = storage.get_contextual_intel(limit=10000) or []
+    ctx = KenyaContext(storage)
+
+    # Gather all reports from all three tables, normalising fields.
+    all_rows = []
+
+    # KE-CIRT reports -> ke_cirt_reports table
+    for r in ctx.get_all_ke_cirt():
+        all_rows.append(
+            {
+                "title": r.get("title", "") or "",
+                "summary": r.get("summary", "") or "",
+                "extracted_at": r.get("created_at", "") or "",
+                "source": "ke_cirt",
+            }
+        )
+
+    # CA advisories -> ca_advisories table
+    for r in ctx.get_recent_ca_advisories(limit=10000):
+        all_rows.append(
+            {
+                "title": r.get("title", "") or "",
+                "summary": r.get("summary", "") or "",
+                "extracted_at": r.get("created_at", "") or "",
+                "source": "ca_advisory",
+            }
+        )
+
+    # contextual_intel table (KE-CIRT unknown / other reports)
+    for r in storage.get_contextual_intel(limit=10000) or []:
+        all_rows.append(r)
 
     monthly = defaultdict(lambda: defaultdict(int))  # month -> {kw: count}
     totals = defaultdict(int)  # kw -> total count
     months = set()
-    for r in rows:
+    for r in all_rows:
         month = _report_month(r)
         if not month:
             continue
@@ -4981,12 +5029,13 @@ def api_ke_context_cbk_trends():
             totals[kw] += 1
 
     if not months:
-        return _ke_ok({"periods": [], "series": {}})
+        return _ke_ok({"labels": [], "data": []})
 
     periods = sorted(months)
     top5 = sorted(totals, key=lambda a: (-totals[a], a))[:5]
-    series = {at: [monthly[m].get(at, 0) for m in periods] for at in top5}
-    return _ke_ok({"periods": periods, "series": series})
+    # Build a single combined data series: total attack mentions per month.
+    combined = [sum(monthly[m].get(at, 0) for at in top5) for m in periods]
+    return _ke_ok({"labels": periods, "data": [{"label": "Attacks", "data": combined}]})
 
 
 @dashboard_bp.route("/api/ke-context/ke-cirt")

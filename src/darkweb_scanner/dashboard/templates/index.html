@@ -2279,23 +2279,34 @@
         } finally {
           btn.disabled = false;
         }
-      } else {
+        } else {
         // Start crawl
         btn.disabled = true;
         btn.textContent = ' Starting...';
         try {
-          const res = await fetch('/api/crawl/start', { method: 'POST' });
+          const res = await fetch('/api/crawl/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            toast(errData.error || `Failed to start crawl (HTTP ${res.status})`, 'error');
+            btn.textContent = '> Start Crawl';
+            btn.disabled = false;
+            return;
+          }
           const data = await res.json().catch(() => ({}));
-          if (data.ok) {
+          if (data.status === 'started') {
             toast('Crawl started.');
             btn.className = 'btn-crawl running';
             btn.textContent = ' Stop Crawl';
-            pollStatus();
+            pollCrawlStatus();
           } else {
             toast(data.error || 'Failed to start crawl', 'error');
             btn.textContent = '> Start Crawl';
           }
         } catch(e) {
+          console.error("Crawl start failed:", e);
           toast('Network error', 'error');
           btn.textContent = '> Start Crawl';
         } finally {
@@ -2389,7 +2400,7 @@
           <td><span class="keyword-tag">${esc(h.keyword)}</span></td>
           <td><span class="cat-tag">${esc(h.category)}</span></td>
           <td class="url-cell"><a href="${esc(h.source_url || h.url)}" target="_blank" rel="noopener noreferrer">${esc(h.source_url || h.url)}</a></td>
-          <td class="ctx-cell" title="${esc(h.context||'')}">${esc((h.context||'').slice(0,240))}</td>
+          <td class="ctx-cell" title="${esc(h.context||'')}">${esc(h.context||'No relevant context found')}</td>
           <td class="time-cell">${fmtTime(h.found_at)}</td>
         </tr>`).join('')}</tbody>
       </table>`;
@@ -3042,7 +3053,7 @@
         <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
           <a href="${h.url}" target="_blank" style="color:var(--accent);font-size:.78rem">${h.url.replace('https://','')}</a>
         </td>
-        <td style="font-size:.78rem;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(h.context||'').replace(/"/g,'&quot;')}">${h.context ? h.context.slice(0,140)+'...' : '-'}</td>
+        <td style="font-size:.78rem;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(h.context||'').replace(/"/g,'&quot;')}">${esc(h.context||'No relevant context found')}</td>
         <td style="font-size:.75rem;white-space:nowrap;color:var(--muted)">${h.found_at ? h.found_at.slice(0,16).replace('T',' ') : '-'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
@@ -3349,7 +3360,7 @@
         <td><span class="keyword-badge">${h.keyword}</span></td>
         <td><span style="font-size:.72rem;padding:2px 7px;border-radius:4px;background:rgba(56,139,253,.15);color:#58a6ff">${h.matched_on}: ${h.matched_value||''}</span></td>
         <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="${h.url}" target="_blank" style="color:var(--accent);font-size:.75rem">${h.url}</a></td>
-        <td style="font-size:.78rem;color:var(--muted);max-width:220px">${(h.context||'').slice(0,100)}...</td>
+        <td style="font-size:.78rem;color:var(--muted);max-width:220px">${esc(h.context||'No relevant context found')}</td>
         <td style="font-size:.75rem;white-space:nowrap;color:var(--muted)">${h.found_at ? h.found_at.slice(0,16).replace('T',' ') : '-'}</td>
       </tr>`).join('')}</tbody>
     </table>`;
@@ -3930,7 +3941,7 @@
         ${t.darkweb_hits.slice(0,5).map(h => `
           <div style="background:rgba(240,136,62,.06);border:1px solid rgba(240,136,62,.2);border-radius:6px;padding:10px;margin-bottom:6px">
             <div style="font-family:var(--mono);font-size:.75rem;color:var(--accent);margin-bottom:4px">${esc(h.url)}</div>
-            <div style="font-size:.75rem;color:var(--muted);font-family:var(--mono)">${esc((h.context||'').slice(0,200))}</div>
+            <div style="font-size:.75rem;color:var(--muted);font-family:var(--mono)">${esc(h.context||'No relevant context found')}</div>
             <div style="font-size:.7rem;color:var(--muted);margin-top:4px">${esc(h.found_at||'')}</div>
           </div>`).join('')}
         ${t.darkweb_hits.length > 5 ? `<p style="color:var(--muted);font-size:.75rem">...and ${t.darkweb_hits.length - 5} more</p>` : ''}
@@ -7434,16 +7445,19 @@
           + '</tbody></table>'
         : '<div style="color:var(--muted);font-size:.78rem">No CA advisories loaded yet.</div>';
       const trends = (trendsRes && trendsRes.data) || {};
-      const atkPeriods = trends.periods || [];
-      const atkSeries = trends.series || {};
-      if (!atkPeriods.length || !Object.keys(atkSeries).length) {
+      const atkLabels = trends.labels || [];
+      const atkDatasets = trends.data || [];
+      if (!atkLabels.length || !atkDatasets.length) {
         cbkChartEl.innerHTML = '<div class="empty" style="padding:24px">'
           + 'No attack trends available yet — ingest reports via Upload or Refresh.'
           + '</div>';
       } else {
         const atkCanvas = cbkChartEl.querySelector('canvas#atkTrendsChart');
-        atkCanvas.dataset.atkLabels = JSON.stringify(atkPeriods);
-        renderAtkChart(atkSeries);
+        if (!atkCanvas) {
+          // Create the canvas if it doesn't exist yet.
+          cbkChartEl.innerHTML = '<canvas id="atkTrendsChart" style="width:100%;max-height:210px;display:block"></canvas>';
+        }
+        renderAtkChart(atkDatasets, atkLabels);
       }
     } catch (e) {
       console.error('[ke-context]', e);
@@ -7451,17 +7465,16 @@
     }
   }
 
-  function renderAtkChart(atkSeries) {
+  function renderAtkChart(atkDatasets, atkLabels) {
     const atkCanvas = document.getElementById('atkTrendsChart');
     if (!atkCanvas || !window.Chart) return;
-    if (atkChart) { atkChart.destroy(); }
     const atkCtx = atkCanvas.getContext('2d');
-    const atkLabels = JSON.parse(atkCanvas.dataset.atkLabels || '[]');
+    if (!atkCtx) return;
+    if (atkChart) { atkChart.destroy(); atkChart = null; }
     const atkColors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff'];
-    const atkKeys = Object.keys(atkSeries);
-    const atkDatasets = atkKeys.map((name, i) => ({
-      label: name,
-      data: (Array.isArray(atkSeries[name]) ? atkSeries[name] : []).map(Number),
+    const chartDatasets = (Array.isArray(atkDatasets) ? atkDatasets : []).map((ds, i) => ({
+      label: ds.label || 'Attacks',
+      data: (Array.isArray(ds.data) ? ds.data : []).map(Number),
       borderColor: atkColors[i % atkColors.length],
       backgroundColor: 'transparent',
       tension: 0.3,
@@ -7470,7 +7483,7 @@
     }));
     atkChart = new window.Chart(atkCtx, {
       type: 'line',
-      data: { labels: atkLabels, datasets: atkDatasets },
+      data: { labels: atkLabels || [], datasets: chartDatasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,

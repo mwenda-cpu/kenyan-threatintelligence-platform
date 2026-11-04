@@ -31,6 +31,32 @@ SYNONYMS: dict = {
 }
 
 
+def _clean_ke_cirt_title(title: str) -> str:
+    """Strip contact footer text from KE-CIRT/CC report titles.
+
+    Removes patterns like:
+      - "by: The National KE-CIRT/CC +254... incidents@ke-cirt.go.ke"
+      - trailing email addresses
+      - trailing phone numbers
+    """
+    if not title:
+        return title
+    # Remove "by: The National KE-CIRT/CC ..." contact block
+    title = re.sub(
+        r"\s*by:\s*The National KE-CIRT/CC.*",
+        "",
+        title,
+        flags=re.IGNORECASE,
+    )
+    # Remove trailing email addresses and anything after them
+    title = re.sub(r"\s*[\w\.\-]+@[\w\.\-]+\.\w+.*", "", title)
+    # Remove trailing phone numbers (+254...)
+    title = re.sub(r"\s*\+\d{2,3}[\d\s\-]+.*", "", title)
+    # Remove "incidents@..." patterns
+    title = re.sub(r"\s*incidents@.*", "", title, flags=re.IGNORECASE)
+    return title.strip()
+
+
 def _normalise_keyword(keyword: str) -> str:
     """Lowercase and strip punctuation, collapsing whitespace."""
     text = re.sub(r"[^\w\s]", " ", (keyword or "").lower())
@@ -149,7 +175,7 @@ class KenyaContext:
             stats = {}
         return {
             "id": row.id,
-            "title": row.title,
+            "title": _clean_ke_cirt_title(row.title),
             "quarter": row.quarter,
             "year": row.year,
             "summary": row.summary,
