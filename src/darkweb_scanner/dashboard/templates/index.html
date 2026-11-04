@@ -664,6 +664,7 @@
       <a href="#" data-tab="users">USRS Users</a>
       <a href="#" data-tab="reports">DOC Reports</a>
       <a href="#" data-tab="settings"> Settings</a>
+      <a href="{{ url_for('dashboard.privacy_page') }}">Privacy Notice</a>
       {% if is_admin %}
       <a href="{{ url_for('dashboard.pending_users') }}">Pending Users</a>
       {% endif %}
@@ -1970,6 +1971,14 @@
       <div class="panel">
         <div class="panel-header"><h2>Account Info</h2></div>
         <div class="panel-body" id="profileInfo"><p style="color:var(--muted);font-size:.84rem">Loading...</p></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><h2>Delete Account</h2></div>
+        <div class="panel-body">
+          <p style="color:var(--muted);font-size:.84rem;margin-bottom:12px">Permanently delete your account and all associated data. This action cannot be undone.</p>
+          <button class="btn btn-danger" onclick="deleteMyAccount()">Delete My Account</button>
+          <div id="deleteMsg" style="margin-top:8px;font-size:.84rem"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -3752,6 +3761,32 @@
     const data = await res.json();
     if (data.ok) { document.getElementById('currentPw').value=''; document.getElementById('newPw').value=''; document.getElementById('confirmPw').value=''; toast('Password updated!'); }
     else toast(data.error||'Error','error');
+  }
+
+  async function deleteMyAccount() {
+    const sure = confirm('Are you sure you want to delete your account? This cannot be undone.');
+    if (!sure) return;
+    const btn = document.querySelector('button[onclick="deleteMyAccount()"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Deleting...'; }
+    const msg = document.getElementById('deleteMsg');
+    try {
+      const res = await fetch('/api/user/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await res.json();
+      if (res.ok && data.status === 'deleted') {
+        if (msg) { msg.textContent = 'Account deleted successfully.'; msg.style.color = 'var(--green)'; }
+        alert('Account deleted successfully.');
+        window.location.href = '/login';
+      } else {
+        const errMsg = data.error || 'Failed to delete account';
+        if (msg) { msg.textContent = errMsg; msg.style.color = 'var(--red)'; }
+        toast(errMsg, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Delete My Account'; }
+      }
+    } catch (e) {
+      if (msg) { msg.textContent = 'Network error'; msg.style.color = 'var(--red)'; }
+      toast('Network error', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Delete My Account'; }
+    }
   }
 
   async function disableTotp() {

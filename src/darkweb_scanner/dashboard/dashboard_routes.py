@@ -30,7 +30,7 @@ from flask import (
     url_for,
 )
 
-from ..auth import get_current_user, hash_password, require_login, validate_password_strength
+from ..auth import get_current_user, hash_password, logout_user, require_login, validate_password_strength
 from ..crawler import CrawlConfig, run_onion_crawl_cycle
 from ..storage import HistoricalAttack, User
 from .forecaster import forecast_hits
@@ -1018,6 +1018,33 @@ def api_profile():
         }
     )
 
+
+@dashboard_bp.route("/api/user/delete", methods=["POST"])
+@require_login
+def api_user_delete():
+    """Delete the currently authenticated user's account.
+
+    Removes the user record from the database, clears the Flask session,
+    and logs the user out. Returns {"status": "deleted"} with 200 OK.
+    """
+    storage = get_storage()
+    user_id = session.get("user_id")
+    username = session.get("username")
+
+    user = storage.get_user_by_id(user_id)
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    # Delete the user record (no FK references to users.id exist in other
+    # tables, so a plain delete is sufficient).
+    storage.delete_user(user_id)
+
+    logger.info("User account deleted: id=%s username=%s", user_id, username)
+
+    # Clear the session and log out.
+    logout_user()
+
+    return jsonify({"status": "deleted"}), 200
 
 
 # ── Telegram Channels API ──────────────────────────────────────────────────────
@@ -5273,6 +5300,11 @@ def api_breaches_directory():
 @require_login
 def settings_page():
     return render_template("settings.html")
+
+
+@dashboard_bp.route("/privacy")
+def privacy_page():
+    return render_template("privacy.html")
 
 
 @dashboard_bp.route("/api/settings/profile", methods=["PUT"])

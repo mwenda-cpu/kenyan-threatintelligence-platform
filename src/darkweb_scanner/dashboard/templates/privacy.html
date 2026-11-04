@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Privacy Notice — Threat Intel Platform</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0b0c10; --surface: #12141c; --surface2: #1c202a;
+      --border: #2a2f3a; --text: #e6edf3; --muted: #8b949e;
+      --accent: #58a6ff; --red: #f85149; --green: #3fb950; --yellow: #d29922;
+      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; line-height: 1.6; }
+
+    header {
+      background: rgba(18, 20, 28, 0.6); backdrop-filter: blur(6px);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 50;
+    }
+    .header-inner {
+      max-width: 1100px; margin: 0 auto; padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; text-decoration: none; color: var(--text); }
+    .brand .badge {
+      display: inline-block; background: var(--red); color: #fff; font-size: 0.65rem;
+      padding: 2px 8px; border-radius: 20px; font-weight: 700; letter-spacing: 0.05em;
+    }
+    nav a { color: var(--muted); text-decoration: none; font-size: 0.85rem; margin-left: 20px; }
+    nav a:hover { color: var(--text); }
+
+    main { max-width: 800px; margin: 0 auto; padding: 40px 24px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px; margin-bottom: 24px; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    h2 { font-size: 1.1rem; margin-top: 24px; margin-bottom: 8px; color: var(--accent); }
+    p { margin-bottom: 14px; color: var(--text); }
+    p + h2 { margin-top: 28px; }
+    ul { margin-bottom: 14px; margin-left: 20px; }
+    li { margin-bottom: 6px; color: var(--text); }
+    .small { font-size: 0.85rem; color: var(--muted); }
+    .back-link { color: var(--accent); text-decoration: none; display: inline-block; margin-bottom: 24px; }
+    .back-link:hover { text-decoration: underline; }
+    .effective-date { font-size: 0.8rem; color: var(--muted); margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a class="brand" href="/dashboard">Threat Intel<span class="badge">Platform</span></a>
+      <nav>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/privacy">Privacy Notice</a>
+        <a href="/login">Login</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <a class="back-link" href="/dashboard">&larr; Back to Dashboard</a>
+
+    <div class="card">
+      <h1>Privacy Notice</h1>
+      <p class="small">Last updated: November 2026</p>
+
+      <h2>1. Introduction</h2>
+      <p>This Privacy Notice explains how the Threat Intel Platform (the "Platform") collects, uses, and protects your personal information when you use our threat intelligence services. By accessing or using the Platform, you agree to the practices described in this notice.</p>
+
+      <h2>2. Information We Collect</h2>
+      <ul>
+        <li><strong>Account information:</strong> When you register, we collect your username, email address, and password hash. OAuth users may also have provider identity information stored.</li>
+        <li><strong>Session and usage telemetry:</strong> We collect login timestamps, IP addresses, browser/user-agent information, and actions performed within the Platform to detect abuse and improve security operations.</li>
+        <li><strong>Threat intelligence data:</strong> The Platform collects and stores threat intelligence indicators, crawled page content, keyword matches, and related security data from public and private sources.</li>
+        <li><strong>Uploaded content:</strong> If you upload files (e.g. KE-CIRT reports, PDFs), we store the extracted text and metadata for analysis.</li>
+      </ul>
+
+      <h2>3. How We Use Your Information</h2>
+      <ul>
+        <li>To authenticate and authorize your access to the Platform.</li>
+        <li>To detect, investigate, and prevent security threats and abuse.</li>
+        <li>To improve detection algorithms and security operations.</li>
+        <li>To provide you with threat intelligence reports and alerts.</li>
+        <li>To comply with legal obligations.</li>
+      </ul>
+
+      <h2>4. Data Sharing and Disclosure</h2>
+      <p>We do not sell your personal data. We may share information only:</p>
+      <ul>
+        <li>With service providers who process data on our behalf (e.g. email delivery, hosting).</li>
+        <li>When required by law, regulation, or legal process.</li>
+        <li>To protect the safety, rights, or property of the Platform or its users.</li>
+      </ul>
+
+      <h2>5. Data Retention</h2>
+      <p>We retain your account information for as long as your account is active. Threat intelligence data and crawl logs are retained according to our operational retention schedules. You may request deletion of your account at any time using the "Delete My Account" option in Settings.</p>
+
+      <h2>6. Your Rights</h2>
+      <ul>
+        <li>Access and update your account information via Settings.</li>
+        <li>Request deletion of your account and associated personal data.</li>
+        <li>Withdraw consent where processing is based on consent.</li>
+        <li>Contact us with privacy-related questions.</li>
+      </ul>
+
+      <h2>7. Security</h2>
+      <p>We implement reasonable technical and organisational measures to protect your data, including encrypted session cookies, bcrypt password hashing, and optional two-factor authentication. No method of transmission or storage is 100% secure.</p>
+
+      <h2>8. Cookies and Tracking</h2>
+      <p>We use session cookies for authentication. We do not use third-party tracking cookies or advertising trackers.</p>
+
+      <h2>9. Changes to This Notice</h2>
+      <p>We may update this Privacy Notice from time to time. The "Last updated" date at the top reflects the most recent revision.</p>
+
+      <p class="effective-date">Effective date: November 2026</p>
+    </div>
+  </main>
+</body>
+</html>
