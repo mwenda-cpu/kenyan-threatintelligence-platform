@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import yaml
 
 from .snippets import DEFAULT_SNIPPET_LEN as SNIPPET_LEN
-from .snippets import clean_snippet, is_actionable_hit, _WS_RE
+from .snippets import clean_snippet
 
 logger = logging.getLogger(__name__)
 
@@ -106,86 +106,41 @@ class Scanner:
                     logger.warning(f"Invalid keyword pattern '{keyword}': {e}")
 
     def _get_context(self, text: str, match: re.Match, keyword: str = "") -> str:
-        """Extract exactly 60 chars before and after the keyword match.
+        """Extract a readable snippet around the keyword match.
 
-        1. Isolates the exact keyword index via match.start()/match.end().
-        2. Slices text[max(0, idx-60):idx+60].
-        3. Strips HTML tags, newlines, and collapses multiple spaces.
-        4. Adds ellipses if the slice cut off words at either boundary.
-        5. Returns empty string when the slice is boilerplate without threat
-           signals (so the caller skips saving it).
+        1. Slices text around the match using the configured context window.
+        2. Strips HTML tags, newlines, and collapses multiple spaces.
+        3. Passes through clean_snippet to remove navigation chrome
+           (leak-site menus, group listings, crypto dumps).
+        4. Returns empty string when nothing readable remains.
         """
         idx = match.start()
         text_len = len(text)
 
-        # Strict 60-char window on each side of the keyword index.
-        start = max(0, idx - 60)
-        end = min(text_len, idx + 60)
+        window = min(int(self.config.context_window or 200), 100)
+        start = max(0, idx - window)
+        end = min(text_len, idx + window)
         raw = text[start:end]
 
-        # Strip HTML tags.
+        # Strip HTML tags, newlines, collapse whitespace.
         raw = _HTML_TAG_RE.sub(" ", raw)
-        # Strip newlines and carriage returns.
         raw = raw.replace("\n", " ").replace("\r", " ")
-        # Collapse multiple spaces into one.
         raw = re.sub(r"\s+", " ", raw).strip()
 
         if not raw:
             return ""
 
-        # Add ellipses if the slice cut off words at either boundary.
-        if start > 0 and not raw.startswith("..."):
-            raw = "..." + raw
-        if end < text_len and not raw.endswith("..."):
-            raw = raw + "..."
-
-        snippet = raw.strip()
-
-        # Filter boilerplate: if the slice contains no threat signal, skip it.
-        if snippet and not self._has_threat_signal(snippet, keyword):
-            return ""
-
-        return snippet
-
-    def _threat_priority(self, keyword: str, context: str) -> int:
-        """Return a relevance score — higher = more threat-relevant context."""
-        score = 0
-        kw = (keyword or "").lower()
-        ctx = (context or "").lower()
-        combined = f"{kw} {ctx}"
-
-        for signal in _THREAT_SIGNALS:
-            if signal in combined:
-                score += 100
-        for target in _KE_TARGETS:
-            if target in combined:
-                score += 50
-        return score
-
-    def _has_threat_signal(self, context: str, keyword: str) -> bool:
-        """True when the context contains threat intelligence signals.
-
-        Only checks _THREAT_SIGNALS (ransomware, breach, hack, leak, etc.).
-        Kenyan targets alone (e.g. "ifmis" in a URL) are NOT threat signals
-        — they only affect dedup priority via _threat_priority.
-        """
-        ctx = (context or "").lower()
-        # Any threat signal word in context makes it actionable.
-        for signal in _THREAT_SIGNALS:
-            if signal in ctx:
-                return True
-        return False
+        # Pass through the snippet cleaner to remove nav menus, group listings,
+        # crypto addresses, etc. Returns "" when nothing readable is left.
+        snippet = clean_snippet(raw, keep=keyword, max_len=SNIPPET_LEN)
+        return snippet.strip() if snippet else ""
 
     def scan(self, url: str, text: str, depth: int = 0) -> list[KeywordHit]:
-        """Scan text for all configured keywords. Returns list of hits.
-
-        Deduplicates by URL: when multiple keywords match on the same page,
-        only the hit with the most threat-relevant context is kept.
-        """
+        """Scan text for all configured keywords. Returns list of hits."""
         if not text:
             return []
 
-        all_hits: list[KeywordHit] = []
+        hits = []
         seen_keywords: set[str] = set()
 
         for keyword, (category, pattern) in self._patterns.items():
@@ -202,11 +157,7 @@ class Scanner:
 
                 context = self._get_context(text, match, keyword)
                 if not context:
-                    # Boilerplate or empty — skip saving.
-                    continue
-
-                if keyword.lower() not in context.lower():
-                    # Keyword only appeared in page chrome, not in context.
+                    # Empty snippet after cleaning — skip saving.
                     continue
 
                 hit = KeywordHit(
@@ -217,30 +168,13 @@ class Scanner:
                     position=match.start(),
                     depth=depth,
                 )
-                if not is_actionable_hit(hit):
-                    continue
-
-                all_hits.append(hit)
+                hits.append(hit)
                 seen_keywords.add(keyword)
 
-        if not all_hits:
-            return []
+        if hits:
+            logger.info(f"Found {len(hits)} keyword hit(s) on {url}")
 
-        # Deduplicate by URL: keep only the hit with the highest threat priority.
-        best_by_url: dict[str, KeywordHit] = {}
-        for hit in all_hits:
-            existing = best_by_url.get(hit.url)
-            if existing is None:
-                best_by_url[hit.url] = hit
-            else:
-                existing_score = self._threat_priority(
-                    existing.keyword, existing.context
-                )
-                new_score = self._threat_priority(hit.keyword, hit.context)
-                if new_score > existing_score:
-                    best_by_url[hit.url] = hit
-
-        return list(best_by_url.values())
+        return hits
 
     def add_keyword(self, keyword: str, category: str = "custom"):
         """Dynamically add a keyword at runtime."""
