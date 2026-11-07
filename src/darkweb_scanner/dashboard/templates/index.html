@@ -689,11 +689,15 @@
   <div id="drawer-overlay" class="drawer-overlay"></div>
   <div id="mobile-drawer" class="mobile-drawer" aria-hidden="true">
   <a href="#" class="nav-item active" data-tab="dashboard">Dashboard</a>
+  {% if is_admin %}
   <a href="#" class="nav-item" data-tab="soc-integrations">SOC Integrations</a>
+  {% endif %}
   <a href="#" class="nav-item" data-tab="network-alerts">Network Alerts</a>
   <a href="#" class="nav-item" data-tab="fintech-correlation">Fintech Correlation</a>
   <a href="#" class="nav-item" data-tab="ke-cirt-advisories">KE-CIRT Advisories</a>
+  {% if is_admin %}
   <a href="#" class="nav-item" data-tab="audit-log">Audit Log</a>
+  {% endif %}
 
   <div class="nav-dropdown">
     <button class="nav-item" data-tab="ransomware" onclick="switchTab('ransomware', event)">Intelligence <span class="caret">▾</span></button>
@@ -708,7 +712,7 @@
     <button class="nav-item" data-tab="dns" onclick="switchTab('dns', event)">Investigations <span class="caret">▾</span></button>
     <div class="nav-dropdown-menu">
       <a href="#" data-tab="dns"> DNS</a>
-      <a href="#" data-tab="quick-scan"> Quick Scan</a>
+      <a href="{{ url_for('dashboard.quick_scan_page') }}" class="nav-item">Quick Scan</a>
 
       <a href="#" data-tab="projects"> Projects</a>
       <a href="#" data-tab="ip-lookup"> IP Lookup</a>
@@ -730,18 +734,20 @@
     </div>
   </div>
 
+  {% if is_admin %}
   <div class="nav-dropdown">
     <button class="nav-item" data-tab="settings" onclick="switchTab('settings', event)">Admin <span class="caret">▾</span></button>
     <div class="nav-dropdown-menu">
       <a href="#" data-tab="users">USRS Users</a>
       <a href="#" data-tab="reports">DOC Reports</a>
-      <a href="#" data-tab="settings"> Settings</a>
+      <a href="{{ url_for('dashboard.settings_page') }}" data-tab="settings"> Settings</a>
       <a href="{{ url_for('dashboard.privacy_page') }}">Privacy Notice</a>
       {% if is_admin %}
       <a href="{{ url_for('dashboard.pending_users') }}">Pending Users</a>
       {% endif %}
     </div>
   </div>
+  {% endif %}
 
   <div class="nav-dropdown">
     <button class="nav-item" data-tab="exposure" onclick="switchTab('exposure', event)">Exposure <span class="caret">▾</span></button>
@@ -753,8 +759,11 @@
 </nav>
   <div class="header-right">
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle light/dark mode"></button>
+    {% if is_admin %}
     <button class="btn-crawl" id="crawlBtn" onclick="toggleCrawl()">> Start Crawl</button>
+    {% endif %}
     <span class="user-pill">{{ username }}</span>
+    <a href="{{ url_for('dashboard.profile_page') }}" class="nav-item">Profile</a>
     <a href="/logout" class="sign-out">Sign out</a>
   </div>
 </header>
@@ -1088,7 +1097,9 @@
         <div class="crawl-stat"><div class="val" id="livePagesVal">0</div><div class="lbl">PAGES</div></div>
         <div class="crawl-stat"><div class="val" id="liveHitsVal">0</div><div class="lbl">HITS</div></div>
       </div>
+      {% if is_admin %}
       <button id="crawlStopBtn" onclick="stopCrawl()" style="display:none;background:rgba(248,81,73,.12);border:1px solid var(--red);color:var(--red);padding:7px 18px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;cursor:pointer;transition:background .2s;flex-shrink:0">. STOP</button>
+      {% endif %}
     </div>
 
     <!-- Stats -->
@@ -2325,7 +2336,8 @@
         btn.className = 'btn-crawl running';
         btn.textContent = ' Running...';
         btn.disabled = true;
-        document.getElementById('crawlStopBtn').style.display = 'inline-block';
+        const stopBtn = document.getElementById('crawlStopBtn');
+        if (stopBtn) stopBtn.style.display = 'inline-block';
       } else {
         card.className = 'crawl-card';
         dot.className = 'crawl-dot';
@@ -2335,7 +2347,8 @@
         btn.className = 'btn-crawl';
         btn.textContent = '> Start Crawl';
         btn.disabled = false;
-        document.getElementById('crawlStopBtn').style.display = 'none';
+        const stopBtn = document.getElementById('crawlStopBtn');
+        if (stopBtn) stopBtn.style.display = 'none';
       }
     } catch(e) {}
   }

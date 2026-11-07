@@ -728,6 +728,9 @@ _active_scan_thread = None  # track running scan thread
 @dashboard_bp.route("/api/crawl/start", methods=["POST"])
 @require_login
 def api_crawl_start():
+    user = get_current_user()
+    if not user or not user.is_admin:
+        return jsonify({"error": "Admin privileges required"}), 403
     print("[crawl] POST /api/crawl/start received", flush=True)
     try:
         # Clear any stale stop flag before starting
@@ -808,6 +811,9 @@ def api_crawl_start():
 @dashboard_bp.route("/api/crawl/stop", methods=["POST"])
 @require_login
 def api_crawl_stop():
+    user = get_current_user()
+    if not user or not user.is_admin:
+        return jsonify({"error": "Admin privileges required"}), 403
     try:
         _ensure_data_dir()
         STOP_FLAG.write_text(datetime.now(timezone.utc).replace(tzinfo=None).isoformat())
@@ -5358,10 +5364,22 @@ def api_breaches_directory():
         return jsonify({"error": str(e)}), 500
 
 
-@dashboard_bp.route("/settings")
+@dashboard_bp.route("/admin/settings")
 @require_login
 def settings_page():
-    return render_template("settings.html")
+    user = get_current_user()
+    if not user or not user.is_admin:
+        abort(403)
+    return render_template("settings.html", is_admin=True, user=user)
+
+
+@dashboard_bp.route("/profile")
+@require_login
+def profile_page():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("auth.login"))
+    return render_template("settings.html", is_admin=False, user=user)
 
 
 @dashboard_bp.route("/privacy")
