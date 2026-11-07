@@ -8,7 +8,7 @@ the contextual_intel table.
 """
 
 from __future__ import annotations
-5
+
 import json
 import logging
 import os
@@ -21,7 +21,7 @@ from typing import Optional
 import requests
 
 from darkweb_scanner.storage import Storage
-from darkweb_scanner.utils.text_cleaner import sanitize_scraped_text, FALLBACK
+from darkweb_scanner.utils.text_cleaner import FALLBACK, sanitize_scraped_text
 
 logger = logging.getLogger(__name__)
 
