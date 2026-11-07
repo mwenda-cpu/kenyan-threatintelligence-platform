@@ -192,6 +192,52 @@ def clean_snippet(text: str, keep: str = "", max_len: int = DEFAULT_SNIPPET_LEN)
     snippet = re.sub(r"([,;|])\s*([,;|])", r"\2", snippet)
     snippet = _WS_RE.sub(" ", snippet).strip()
 
+    # Hard rejection: leak-site index-page metadata dumps are not threat
+    # context; drop them so nothing is saved to the DB or shown in the UI.
+    if re.search(r"\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}", snippet) and (
+        "(views:" in snippet or "UTC +0" in snippet
+    ):
+        return ""
+    # Generic date-structure check: two "Month Day, Year" patterns in one
+    # snippet indicates a metadata row (e.g. leak-site index page listing).
+    _MONTH_DATE_RE = re.compile(
+        r"(?i)(January|February|March|April|May|June|July|August|September|"
+        r"October|November|December)\s+\d{1,2},\s+\d{4}"
+    )
+    if len(_MONTH_DATE_RE.findall(snippet)) >= 2:
+        return ""
+    # "LEAKED"/"Published" plus any date string is also a metadata marker.
+    _ANY_DATE_RE = re.compile(
+        r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{2}[-/]\d{2}"
+        r"|(January|February|March|April|May|June|July|August|September|"
+        r"October|November|December)\s+\d{1,2},\s+\d{4}",
+        re.IGNORECASE,
+    )
+    if (
+        ("LEAKED" in snippet or "Published" in snippet)
+        and _ANY_DATE_RE.search(snippet)
+    ):
+        return ""
+    if snippet.startswith(("s an industrial", "ial company")):
+        return ""
+    # Company profile footer noise: "is an Argentine company", "part of Grupo",
+    # or trailing "www.<domain>".
+    if (
+        "is an Argentine company" in snippet
+        or "part of Grupo" in snippet
+        or re.search(r"www\.[a-z0-9.-]+\.[a-z]{2,}\s*$", snippet, re.IGNORECASE)
+    ):
+        return ""
+    # Generic leak-site boilerplate.
+    if (
+        "Full Automation Complete process" in snippet
+        or "Anti-malware suite Control panels" in snippet
+    ):
+        return ""
+    # Search engine result metadata: "...views: N Published <domain>".
+    if re.search(r"views:\s*\d+\s+Published\s+\w+\.\w+", snippet, re.IGNORECASE):
+        return ""
+
     if not snippet:
         return ""
 

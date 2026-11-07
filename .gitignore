@@ -16,3 +16,4 @@ Caddyfile
 
 src/*.egg-info
 *.egg-info/
+clean_db.sql

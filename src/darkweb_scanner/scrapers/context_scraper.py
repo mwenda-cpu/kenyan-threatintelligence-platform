@@ -8,7 +8,7 @@ the contextual_intel table.
 """
 
 from __future__ import annotations
-
+5
 import json
 import logging
 import os
@@ -21,6 +21,7 @@ from typing import Optional
 import requests
 
 from darkweb_scanner.storage import Storage
+from darkweb_scanner.utils.text_cleaner import sanitize_scraped_text, FALLBACK
 
 logger = logging.getLogger(__name__)
 
@@ -213,14 +214,35 @@ def scrape_context(storage: Storage) -> dict:
             per_source[name] = {"error": "fetch failed", "saved": 0}
             continue
 
+        # Hard block: skip leak-site index-page metadata dumps (raw table-cell
+        # text, not leak content).
+        if re.search(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}", text) and (
+            "(views:" in text or "UTC +0" in text
+        ):
+            logger.warning("[Scraper] Skipped index page metadata for %s", url)
+            per_source[name] = {"error": "index page metadata", "saved": 0}
+            continue
+        if text.startswith(("s an industrial", "ial company")) or (
+            "Dostoevsky" in text
+            and re.search(r"\w+ \d{1,2}, \d{4}\s+\w+ \d{1,2}, \d{4}", text)
+        ):
+            logger.warning("[Scraper] Skipped index page metadata for %s", url)
+            per_source[name] = {"error": "index page metadata", "saved": 0}
+            continue
+
         total_scraped += 1
         intel = _extract_intel(text, name, url)
+
+        summary = sanitize_scraped_text(intel["summary"])
+        if not summary or summary == FALLBACK:
+            logger.warning("[Scraper] Kept row with fallback context for %s", url)
+            summary = FALLBACK
 
         try:
             storage.save_contextual_intel(
                 source=name,
                 title=intel["title"],
-                summary=intel["summary"],
+                summary=summary,
                 url=url,
             )
             total_saved += 1
@@ -727,11 +749,35 @@ def ingest_ke_reports(storage) -> dict:
                     if 10 <= len(line) <= 200 and not line.startswith("--"):
                         title = line
                         break
+                # Hard block: skip leak-site index-page metadata dumps (raw
+                # table-cell text, not leak content).
+                path_str = str(path)
+                if re.search(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}", text) and (
+                    "(views:" in text or "UTC +0" in text
+                ):
+                    logger.warning("[Scraper] Skipped index page metadata for %s", path_str)
+                    skipped += 1
+                    continue
+                if text.startswith(("s an industrial", "ial company")) or (
+                    "Dostoevsky" in text
+                    and re.search(r"\w+ \d{1,2}, \d{4}\s+\w+ \d{1,2}, \d{4}", text)
+                ):
+                    logger.warning("[Scraper] Skipped index page metadata for %s", path_str)
+                    skipped += 1
+                    continue
+                if not text.strip():
+                    logger.warning("[Scraper] Skipped empty row for %s", path_str)
+                    skipped += 1
+                    continue
+                summary = sanitize_scraped_text(text.strip())
+                if not summary or summary == FALLBACK:
+                    logger.warning("[Scraper] Kept row with fallback context for %s", path_str)
+                    summary = FALLBACK
                 storage.save_contextual_intel(
                     source=kind or "ke_report",
                     title=title,
-                    summary=text.strip(),
-                    url=str(path),
+                    summary=summary,
+                    url=path_str,
                 )
                 existing_intel.add(title.lower())
                 saved += 1
