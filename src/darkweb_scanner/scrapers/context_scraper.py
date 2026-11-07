@@ -91,12 +91,12 @@ def _fetch_pdf_text(url: str) -> Optional[str]:
         except Exception as exc:
             logger.debug("pdfplumber failed: %s", exc)
 
-        # Fallback: PyPDF2
+        # Fallback: pypdf
         try:
             import io
 
-            import PyPDF2
-            reader = PyPDF2.PdfReader(io.BytesIO(resp.content))
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(resp.content))
             text_parts = []
             for page in reader.pages:
                 page_text = page.extract_text()
@@ -106,9 +106,9 @@ def _fetch_pdf_text(url: str) -> Optional[str]:
             if text.strip():
                 return text[:MAX_TEXT_LEN]
         except ImportError:
-            logger.warning("PyPDF2 not installed")
+            logger.warning("pypdf not installed")
         except Exception as exc:
-            logger.debug("PyPDF2 failed: %s", exc)
+            logger.debug("pypdf failed: %s", exc)
 
         return None
     except Exception as exc:
@@ -244,7 +244,10 @@ def scrape_context(storage: Storage) -> dict:
 
 
 def _extract_text_from_pdf_file(path: Path) -> Optional[str]:
-    """Extract text from a local PDF file using pdfplumber (with PyPDF2 fallback)."""
+    """Extract text from a local PDF file using pdfplumber (with pypdf fallback).
+
+    Logs the first 200 characters of extracted text for debugging.
+    """
     try:
         try:
             import pdfplumber
@@ -256,6 +259,11 @@ def _extract_text_from_pdf_file(path: Path) -> Optional[str]:
                         text_parts.append(page_text)
                 text = "\n".join(text_parts)
                 if text.strip():
+                    logger.debug(
+                        "PDF text extracted from %s (first 200 chars): %r",
+                        path.name,
+                        text[:200],
+                    )
                     return text[:MAX_TEXT_LEN]
         except ImportError:
             logger.warning("pdfplumber not installed, trying PyPDF2")
@@ -263,8 +271,8 @@ def _extract_text_from_pdf_file(path: Path) -> Optional[str]:
             logger.debug("pdfplumber failed for %s: %s", path, exc)
 
         try:
-            import PyPDF2
-            reader = PyPDF2.PdfReader(str(path))
+            import pypdf
+            reader = pypdf.PdfReader(str(path))
             text_parts = []
             for page in reader.pages:
                 page_text = page.extract_text()
@@ -272,12 +280,18 @@ def _extract_text_from_pdf_file(path: Path) -> Optional[str]:
                     text_parts.append(page_text)
             text = "\n".join(text_parts)
             if text.strip():
+                logger.debug(
+                    "PDF text extracted from %s via pypdf (first 200 chars): %r",
+                    path.name,
+                    text[:200],
+                )
                 return text[:MAX_TEXT_LEN]
         except ImportError:
-            logger.warning("PyPDF2 not installed")
+            logger.warning("pypdf not installed")
         except Exception as exc:
-            logger.debug("PyPDF2 failed for %s: %s", path, exc)
+            logger.debug("pypdf failed for %s: %s", path, exc)
 
+        logger.warning("No text extracted from PDF %s", path.name)
         return None
     except Exception as exc:
         logger.error("Failed to read PDF file %s: %s", path, exc)
@@ -386,13 +400,20 @@ def _parse_sidecar(kind: str, text: str) -> dict | None:
 
 
 def _infer_kind(stem: str) -> str | None:
-    """Map a filename stem to its source kind via the filename prefix."""
+    """Map a filename stem to its source kind via the filename prefix.
+
+    Prefix checks use the underscore/dash separator so that ``ca_ke_cirt_*``
+    files are classified as ``ke_cirt`` (they carry the ``ke_cirt`` segment)
+    rather than being swallowed by the broader ``ca_`` / ``cbk_`` checks.
+    Order matters: ``ke_cirt`` is checked first because ``ca_ke_cirt_*`` and
+    ``cbk_ke_cirt_*`` files would otherwise match ``ca_`` / ``cbk_`` first.
+    """
     name = str(stem or "").lower()
     if name.startswith(("ke_cirt", "ke-cirt", "kecirt")):
         return "ke_cirt"
-    if name.startswith(("ca",)):
+    if name.startswith(("ca_", "ca-")):
         return "ca"
-    if name.startswith(("cbk",)):
+    if name.startswith(("cbk_", "cbk-")):
         return "cbk"
     return None
 
@@ -402,7 +423,7 @@ def _cbk_stats_from_text(text: str) -> dict:
     stats: dict = {}
     lowered = text.lower()
     for key in ("mobile_banking", "mobile banking", "card", "online", "cyber", "fraud"):
-        pattern = re.escape(key).replace("\\ ", r"[\s_]*") + r"[\s:,\-–—]{0,20}([\d][\d,]*\.?\d*)"
+        pattern = re.escape(key) + r"[\s\-:,–—]{0,5}(?:[a-z\s\-]{0,30}?)?(\d[\d,]*\.?\d*)"
         m = re.search(pattern, lowered)
         if m:
             raw = m.group(1).replace(",", "").strip()
@@ -410,6 +431,7 @@ def _cbk_stats_from_text(text: str) -> dict:
                 stats[key.replace(" ", "_")] = float(raw) if "." in raw else int(raw)
             except ValueError:
                 continue
+    logger.info("CBK stats extracted: %s", stats)
     return stats
 
 
@@ -421,16 +443,118 @@ def _cbk_period_from_text(text: str, filename: str) -> str:
     return m.group(0) if m else ""
 
 
+_RE_QTR = re.compile(r"Q(?:uarter)?[\s\-]*([1-4])[\s\-/]*20(\d{2})", re.IGNORECASE)
+_RE_YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
+
+
+def _ke_cirt_quarter_year(text: str, filename: str) -> tuple:
+    """Extract (quarter, year) from KE-CIRT report text or filename.
+
+    Looks for patterns like "Q1 2025", "Quarter 4 2024", "Q4 2025/26".
+    Returns (quarter_str or "Q?", year_int or 0).
+    """
+    hay = f"{text or ''} {filename or ''}".replace("_", " ")
+    m = _RE_QTR.search(hay)
+    if m:
+        return f"Q{m.group(1)}", 2000 + int(m.group(2))
+    # Fallback: standalone quarter token in filename.
+    m = re.search(r"(?<![A-Za-z0-9])Q([1-4])(?![0-9])", filename.replace("_", " "), re.IGNORECASE)
+    quarter = f"Q{m.group(1)}" if m else "Q?"
+    year = 0
+    for text_part in (filename.replace("_", " "), text or ""):
+        years = [int(y) for y in _RE_YEAR.findall(text_part)]
+        plausible = [y for y in years if 2000 <= y <= 2035]
+        if plausible:
+            year = max(plausible)
+            break
+    return quarter, year
+
+
+def _ke_cirt_stats_from_text(text: str) -> dict:
+    """Best-effort attack-type stat extraction from KE-CIRT text.
+
+    Finds "<number> <label>" pairs like "203 phishing", "1,204 malware".
+    """
+    stats: dict = {}
+    pattern = re.compile(
+        r"(?<![-+\d])([\d][\d,]*\.?\d*)\s*(malware|ddos|d-dos|phishing|brute(?:[\s-]*force)?|"
+        r"web(?:[\s-]*(?:application|app))?|intrusion|scans?|events?|incidents?|ransomware|fraud|attacks?)(?!@)",
+        re.IGNORECASE,
+    )
+    for raw_num, raw_label in pattern.findall(text or ""):
+        try:
+            num = float(raw_num.replace(",", "")) if "." in raw_num else int(raw_num.replace(",", ""))
+        except ValueError:
+            continue
+        key = raw_label.strip().lower().replace("-", " ").replace(" ", "_")
+        if key not in stats or num > stats[key]:
+            stats[key] = num
+    return stats
+
+
+def _ke_cirt_from_pdf(text: str, filename: str) -> dict | None:
+    """Parse KE-CIRT report fields from extracted PDF text."""
+    if not text or not text.strip():
+        logger.debug("KE-CIRT parser: empty text for %s", filename)
+        return None
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        logger.debug("KE-CIRT parser: no non-empty lines for %s", filename)
+        return None
+    title = lines[0] if lines else filename
+    if len(title) < 10 and len(lines) > 1:
+        title = lines[1]
+    _qtr, _yr = _ke_cirt_quarter_year(text, filename)
+    logger.debug(
+        "KE-CIRT parser for %s: title=%r quarter=%s year=%s",
+        filename,
+        title[:100],
+        _qtr,
+        _yr,
+    )
+    quarter, year = _qtr, _yr
+    stats = _ke_cirt_stats_from_text(text)
+    summary = text[:500]
+    return {
+        "title": title[:300],
+        "quarter": quarter,
+        "year": year,
+        "stats": stats,
+        "summary": summary,
+        "source_url": _SRC_URLS["ke_cirt"],
+    }
+
+
 def _ca_from_text(text: str, filename: str) -> dict | None:
     """Best-effort CA advisory extraction from raw text when no sidecar is present."""
+    if not text or not text.strip():
+        logger.debug("CA parser: empty text for %s", filename)
+        return None
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     title = lines[0] if lines else filename
     date_published = ""
-    for ln in lines[:5]:
-        m = re.search(r"\b(19|20)\d{2}-\d{2}-\d{2}\b", ln)
-        if m:
-            date_published = m.group(0)
+    # Try multiple date formats: ISO, "14th October 2025", "October 2025"
+    date_patterns = [
+        r"\b(19|20)\d{2}-\d{2}-\d{2}\b",
+        r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(January|February|March|April|May|June|July|"
+        r"August|September|October|November|December)\s+((?:19|20)\d{2})\b",
+        r"\b(January|February|March|April|May|June|July|August|September|"
+        r"October|November|December)\s+((?:19|20)\d{2})\b",
+    ]
+    for ln in lines[:10]:
+        for pat in date_patterns:
+            m = re.search(pat, ln, re.IGNORECASE)
+            if m:
+                date_published = m.group(0)
+                break
+        if date_published:
             break
+    logger.debug(
+        "CA parser for %s: title=%r date=%r",
+        filename,
+        title[:100],
+        date_published,
+    )
     threat_type = "general_advisory"
     blob = f"{filename} {text}".replace("_", " ").replace("-", " ").lower()
     blob = re.sub(r"\s+", " ", blob)
@@ -460,9 +584,10 @@ def ingest_ke_reports(storage) -> dict:
     """Read .pdf/.txt files from /app/data/ke_reports/ and route them to the
     correct table:
 
-    - CA Advisory files -> ``CAAdvisory`` table (via ``ke_context.py``)
-    - CBK statistics files -> ``CBKFraudStats`` table (via ``ke_context.py``)
-    - KE-CIRT/other files -> ``contextual_intel`` table
+    - CA Advisory files (``ca_*``) -> ``CAAdvisory`` table (via ``ke_context.py``)
+    - CBK statistics files (``cbk_*``) -> ``CBKFraudStats`` table (via ``ke_context.py``)
+    - KE-CIRT files (``ke_cirt_*``) -> ``ke_cirt_reports`` table (via ``ke_context.py``)
+    - Unknown files -> ``contextual_intel`` table
 
     Skips files already present in the target table. Returns
     ``{"scraped", "saved", "skipped"}``.
@@ -551,9 +676,11 @@ def ingest_ke_reports(storage) -> dict:
                     "stats": _cbk_stats_from_text(text),
                     "source_url": _SRC_URLS["cbk"],
                 }
-                if not rec.get("period") or not rec.get("stats"):
+                if not rec.get("period"):
                     skipped += 1
                     continue
+                if not rec.get("stats"):
+                    logger.warning("CBK period %s has no stats; saving with empty dict", rec["period"])
                 if rec["period"].strip() in existing_cbk:
                     skipped += 1
                     continue
@@ -562,8 +689,34 @@ def ingest_ke_reports(storage) -> dict:
                 existing_cbk.add(rec["period"].strip())
                 saved += 1
                 logger.info("Ingested CBK fraud stats into CBKFraudStats: %s", rec["period"])
+            elif kind == "ke_cirt":
+                # KE-CIRT reports -> ke_cirt_reports table
+                rec = _ke_cirt_from_pdf(text, stem)
+                if not rec or not rec.get("title"):
+                    skipped += 1
+                    continue
+                # Dedup on (title, quarter, year)
+                already = any(
+                    str(r.get("title") or "").strip().lower() == rec["title"].strip().lower()
+                    and str(r.get("quarter") or "") == rec.get("quarter", "")
+                    and int(r.get("year") or 0) == int(rec.get("year") or 0)
+                    for r in (ctx.get_all_ke_cirt() or [])
+                )
+                if already:
+                    skipped += 1
+                    continue
+                ctx.load_ke_cirt_report(
+                    rec["title"],
+                    rec.get("quarter") or "Q?",
+                    int(rec.get("year") or 0),
+                    rec.get("stats") or {},
+                    rec.get("summary") or "",
+                    rec.get("source_url") or _SRC_URLS["ke_cirt"],
+                )
+                saved += 1
+                logger.info("Ingested KE-CIRT report into ke_cirt_reports: %s", rec["title"])
             else:
-                # KE-CIRT / unknown: keep in contextual_intel.
+                # Unknown: keep in contextual_intel.
                 key = stem.lower()
                 if key in existing_intel:
                     skipped += 1

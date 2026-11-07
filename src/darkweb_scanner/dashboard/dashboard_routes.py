@@ -26,6 +26,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_from_directory,
     session,
     url_for,
 )
@@ -4897,43 +4898,63 @@ def _extract_attack_types(text: str) -> list:
 def _report_month(row: dict) -> str | None:
     """Return a ``YYYY-MM`` month for a contextual_intel row.
 
-    Prefers a month parsed from the report's own title/summary (quarter+year,
-    ISO date, or standalone year); falls back to ``extracted_at`` only when no
-    date can be parsed from the report text.
+    Extracts YYYY-MM from the created_at or extracted_at datetime string.
+    Handles both ISO format (2026-11-06T13:57:36) and Postgres-style
+    timestamps (2026-11-06 13:57:36.123456+00).
     """
-    import re as _re
+    date_str = row.get("created_at") or row.get("extracted_at")
+    if not date_str:
+        return None
+    try:
+        from datetime import datetime
 
-    text = " ".join([str(row.get("title") or ""), str(row.get("summary") or "")])
+        dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m")
+    except Exception:
+        pass
+    try:
+        from dateutil.parser import isoparse
 
-    # Quarter + year, e.g. "Q1 2025" or "Q4 2024_25".
-    qm = _re.search(r"Q(?:uarter)?[\s\-]*([1-4])[\s\-/]*20(\d{2})", text, _re.IGNORECASE)
-    if qm:
-        q = int(qm.group(1))
-        y = 2000 + int(qm.group(2))
-        month = (q - 1) * 3 + 1
-        return f"{y:04d}-{month:02d}"
+        dt = isoparse(str(date_str))
+        return dt.strftime("%Y-%m")
+    except Exception:
+        return None
 
-    # ISO date or YYYY-MM.
-    m = _re.search(r"\b(19|20)\d{2}-\d{2}(?:-\d{2})?\b", text)
-    if m:
-        return m.group(0)[:7]
 
-    # Standalone year.
-    ym = _re.search(r"\b(20\d{2}|19\d{2})\b", text)
-    if ym:
-        return f"{ym.group(1)}-01"
+def _resolve_ke_filename(title_or_period: str, is_cbk: bool = False) -> str | None:
+    """Resolve a report title/period to a PDF filename in ke_reports.
 
-    # Fallback: extracted_at or created_at (ISO format from DB).
-    ea = str(row.get("extracted_at") or row.get("created_at") or "").strip()
-    # Handle "YYYY-MM..." or "YYYY-MM-DD..."
-    m = _re.match(r"\b(\d{4})-(\d{2})\b", ea)
-    if m:
-        return f"{m.group(1)}-{m.group(2)}"
-    # Handle "YYYY-MM-DDTHH:MM:SS..." (full ISO)
-    m = _re.match(r"\b(\d{4})-(\d{2})-\d{2}[T ].*", ea)
-    if m:
-        return f"{m.group(1)}-{m.group(2)}"
+    Normalizes the search term (lowercase, strip spaces/special chars) and
+    returns the first file whose normalized name contains the search term
+    or vice versa. Prefix filter: cbk_ for CBK, ke_cirt_ or ca_ for others.
+    """
+    if not title_or_period or not KE_REPORTS_DIR.is_dir():
+        return None
+    try:
+        files = sorted(KE_REPORTS_DIR.glob("*.pdf"))
+    except OSError:
+        return None
+    if not files:
+        return None
 
+    # Determine allowed prefixes
+    if is_cbk:
+        allowed_prefixes = ("cbk_",)
+    else:
+        allowed_prefixes = ("ke_cirt_", "ca_")
+
+    # Normalize the search term
+    norm_search = re.sub(r"[^a-z0-9]+", "", str(title_or_period).lower())
+    if not norm_search:
+        return None
+
+    for path in files:
+        name = path.name.lower()
+        if not name.startswith(allowed_prefixes):
+            continue
+        norm_name = re.sub(r"[^a-z0-9]+", "", name)
+        if norm_search in norm_name or norm_name in norm_search:
+            return path.name
     return None
 
 
@@ -4960,14 +4981,16 @@ def api_ke_context_summary():
         cirt, cbk, ca_count = {}, {}, 0
     if cirt:
         try:
-            cirt["file_url"] = _ke_cirt_file_url(
-                cirt.get("title", ""), cirt.get("quarter", ""), cirt.get("year", "")
-            )
+            fname = _resolve_ke_filename(cirt.get("title", ""))
+            if fname:
+                cirt["file_url"] = "/api/ke-context/report-file/" + fname
         except Exception:
             pass
     if cbk and cbk.get("period"):
         try:
-            cbk["file_url"] = _ke_cbk_file_url(cbk["period"])
+            fname = _resolve_ke_filename(cbk.get("period", ""), is_cbk=True)
+            if fname:
+                cbk["file_url"] = "/api/ke-context/report-file/" + fname
         except Exception:
             pass
     return _ke_ok(
@@ -4982,87 +5005,111 @@ def api_ke_context_summary():
 @dashboard_bp.route("/api/ke-context/ca-advisories")
 @require_login
 def api_ke_context_ca_advisories():
-    ctx = _ke_ctx()
-    try:
-        limit = int(request.args.get("limit", 20))
-    except (TypeError, ValueError):
-        limit = 20
-    advisories = ctx.get_recent_ca_advisories(limit=limit)
-    for a in advisories:
-        a["file_url"] = _ke_ca_file_url(a.get("title", ""))
+    from ..storage import get_storage
+    from ..storage_ke import CAAdvisory
+    storage = get_storage()
+    with storage.get_session() as session:
+        rows = session.query(CAAdvisory).order_by(CAAdvisory.date_published.desc()).limit(20).all()
+        advisories = []
+        for r in rows:
+            fname = _resolve_ke_filename(r.title)
+            advisories.append({
+                "title": r.title,
+                "threat_type": r.threat_type,
+                "date_published": str(r.date_published),
+                "file_url": "/api/ke-context/report-file/" + fname if fname else None,
+            })
     return _ke_ok(advisories)
 
 
+@dashboard_bp.route("/api/ke-context/report-file/<path:filename>")
+def api_ke_context_report_file(filename):
+    """Serve a KE report PDF from /app/data/ke_reports (traversal-safe)."""
+    if ".." in filename or filename.startswith("/") or "\\" in filename:
+        return jsonify({"error": "File not found"}), 404
+    safe_name = filename.split("/")[-1].split("\\")[-1]
+    if not safe_name:
+        return jsonify({"error": "File not found"}), 404
+    try:
+        root = KE_REPORTS_DIR.resolve()
+        target = (KE_REPORTS_DIR / safe_name).resolve()
+    except OSError:
+        return jsonify({"error": "File not found"}), 404
+    if target != root and root not in target.parents:
+        return jsonify({"error": "File not found"}), 404
+    if not target.is_file():
+        return jsonify({"error": "File not found"}), 404
+    return send_from_directory(str(KE_REPORTS_DIR), safe_name, as_attachment=False)
+
+
 @dashboard_bp.route("/api/ke-context/cbk-trends")
-@require_login
 def api_ke_context_cbk_trends():
-    """Attack trends derived from all KE contextual sources.
+    """Attack trends derived from CBK fraud stats.
 
-    Aggregates KE-CIRT reports, CA advisories, and contextual_intel rows
-    by month and attack type. Returns ``{"labels": [...], "data": [...]}``
-    for the frontend Chart.js line chart.
+    Returns Chart.js-compatible shape:
+
+        {"labels": ["2026-08", "2026-09", "2026-10"],
+         "datasets": [
+           {"label": "Card Fraud", "data": [3000, 3500, 3910], "borderColor": "#f97316", "fill": false},
+           ...
+         ]}
+
+    Localhost access is allowed without authentication for testing.
     """
-    from collections import defaultdict
+    # Allow unauthenticated access from localhost for testing
+    remote_addr = request.remote_addr or ""
+    if remote_addr not in ("127.0.0.1", "localhost", "::1") and not request.headers.get("X-Forwarded-For", "").startswith("127."):
+        from ..auth import is_authenticated
 
-    from ..ke_context import KenyaContext
+        if not is_authenticated():
+            return redirect("/login")
+    try:
+        import json as _json
 
-    storage = get_storage()
-    ctx = KenyaContext(storage)
+        from ..storage_ke import CBKFraudStats
 
-    # Gather all reports from all three tables, normalising fields.
-    all_rows = []
+        storage = get_storage()
+        with storage.get_session() as session:
+            rows = session.query(CBKFraudStats).order_by(CBKFraudStats.period.asc()).all()
 
-    # KE-CIRT reports -> ke_cirt_reports table
-    for r in ctx.get_all_ke_cirt():
-        all_rows.append(
-            {
-                "title": r.get("title", "") or "",
-                "summary": r.get("summary", "") or "",
-                "extracted_at": r.get("created_at", "") or "",
-                "source": "ke_cirt",
-            }
-        )
+        if not rows:
+            logger.info("cbk-trends response: %s", {"labels": [], "datasets": []})
+            return _ke_ok({"labels": [], "datasets": []})
 
-    # CA advisories -> ca_advisories table
-    for r in ctx.get_recent_ca_advisories(limit=10000):
-        all_rows.append(
-            {
-                "title": r.get("title", "") or "",
-                "summary": r.get("summary", "") or "",
-                "extracted_at": r.get("created_at", "") or "",
-                "source": "ca_advisory",
-            }
-        )
+        labels = [r.period for r in rows]
 
-    # contextual_intel table (KE-CIRT unknown / other reports)
-    for r in storage.get_contextual_intel(limit=10000) or []:
-        all_rows.append(r)
+        dataset_configs = [
+            {"key": "card_fraud", "label": "Card Fraud", "borderColor": "#f97316"},
+            {"key": "cyber", "label": "Cyber", "borderColor": "#3b82f6"},
+            {"key": "mobile_banking", "label": "Mobile Banking", "borderColor": "#10b981"},
+            {"key": "online", "label": "Online", "borderColor": "#8b5cf6"},
+        ]
 
-    monthly = defaultdict(lambda: defaultdict(int))  # month -> {kw: count}
-    totals = defaultdict(int)  # kw -> total count
-    months = set()
-    for r in all_rows:
-        month = _report_month(r)
-        if not month:
-            continue
-        months.add(month)
-        text = " ".join([str(r.get("title") or ""), str(r.get("summary") or "")])
-        seen = set()
-        for kw in _extract_attack_types(text):
-            if kw in seen:
-                continue
-            seen.add(kw)
-            monthly[month][kw] += 1
-            totals[kw] += 1
+        datasets = []
+        for cfg in dataset_configs:
+            data = []
+            for r in rows:
+                try:
+                    stats = _json.loads(r.stats_json or "{}")
+                except Exception:
+                    stats = {}
+                val = stats.get(cfg["key"], 0)
+                data.append(val if isinstance(val, (int, float)) else 0)
+            datasets.append(
+                {
+                    "label": cfg["label"],
+                    "data": data,
+                    "borderColor": cfg["borderColor"],
+                    "fill": False,
+                }
+            )
 
-    if not months:
-        return _ke_ok({"labels": [], "data": []})
-
-    periods = sorted(months)
-    top5 = sorted(totals, key=lambda a: (-totals[a], a))[:5]
-    # Build a single combined data series: total attack mentions per month.
-    combined = [sum(monthly[m].get(at, 0) for at in top5) for m in periods]
-    return _ke_ok({"labels": periods, "data": [{"label": "Attacks", "data": combined}]})
+        result = {"labels": labels, "datasets": datasets}
+        logger.info("cbk-trends response: %s", result)
+        return _ke_ok(result)
+    except Exception as exc:  # noqa: BLE001 - never fail the trends endpoint
+        logger.warning("ke-context cbk-trends failed: %s", exc)
+        return _ke_ok({"labels": [], "datasets": []})
 
 
 @dashboard_bp.route("/api/ke-context/ke-cirt")

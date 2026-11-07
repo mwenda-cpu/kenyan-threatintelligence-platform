@@ -796,13 +796,14 @@
     .hd-predictive-card .hd-card-body{flex:1;min-height:0;overflow:auto}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/kenya-utils@latest/dist/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/kenya-utils@latest/dist/index.js" type="module"></script>
   <script>
     // Fallback if kenya-utils CDN fails
     window.addEventListener('error', (e) => {
       if (e.target && e.target.src && e.target.src.includes('kenya-utils')) {
         const s = document.createElement('script');
         s.src = 'https://esm.sh/kenya-utils';
+        s.type = 'module';
         document.head.appendChild(s);
       }
     }, true);
@@ -7442,6 +7443,8 @@
         keFetch('/api/ke-context/ca-advisories?limit=20'),
         keFetch('/api/ke-context/cbk-trends')
       ]);
+      console.log("cbk-trends response:", trendsRes);
+      console.log("cbk-totals response:", summaryRes);
       const summary = summaryRes && summaryRes.data ? summaryRes.data : {};
       if (summaryRes && summaryRes.ok === false) {
         if (cirtEl) cirtEl.innerHTML = '<div style="color:var(--red);font-size:.8rem">Failed to load Kenya context (timeout or error).</div>';
@@ -7458,15 +7461,27 @@
         : '<div style="color:var(--muted);font-size:.78rem">No KE-CIRT/CC reports loaded yet. Upload a PDF above or ingest files into ./data/ke_reports/.</div>';
       const count = summary.ca_advisory_count || 0;
       caCountEl.innerHTML = `<div style="font-size:1.6rem;font-weight:800">${count}</div><div style="color:var(--muted);font-size:.75rem">advisories loaded</div>`;
+      const trends = (trendsRes && trendsRes.data) || {};
+      const atkLabels = trends.labels || [];
+      const atkDatasets = trends.datasets || [];
       const cbk = summary.cbk_latest || {};
-      const stats = cbk.stats || {};
+      // Build latest stats from trends datasets (last value of each dataset)
+      const latestStats = {};
+      if (atkDatasets && atkDatasets.length) {
+        atkDatasets.forEach(ds => {
+          if (ds.data && ds.data.length) {
+            latestStats[ds.label] = ds.data[ds.data.length - 1];
+          }
+        });
+      }
+      const stats = Object.keys(latestStats).length ? latestStats : (cbk.stats || {});
       const statKeys = Object.keys(stats);
       const cbkPeriod = cbk.file_url
         ? `<a href="${esc(cbk.file_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent,#58a6ff);text-decoration:none">${esc(cbk.period || '')}</a>`
         : esc(cbk.period || '');
       cbkEl.innerHTML = statKeys.length
         ? `<div style="color:var(--muted);font-size:.78rem;margin-bottom:6px">${cbkPeriod}</div>`
-          + statKeys.slice(0, 6).map(k => `<div style="display:flex;justify-content:space-between;font-size:.82rem;padding:2px 0"><span>${esc(k)}</span><b>${esc(stats[k])}</b></div>`).join('')
+          + statKeys.slice(0, 6).map(k => `<div style="display:flex;justify-content:space-between;font-size:.82rem;padding:2px 0"><span>${esc(k)}</span><b>${esc(stats[k] !== undefined && stats[k] !== null ? stats[k] : '—')}</b></div>`).join('')
         : '<div style="color:var(--muted);font-size:.78rem">No CBK fraud stats loaded yet.</div>';
       const advisories = (caRes && caRes.data) || [];
       caTableEl.innerHTML = advisories.length
@@ -7479,17 +7494,13 @@
             }).join('')
           + '</tbody></table>'
         : '<div style="color:var(--muted);font-size:.78rem">No CA advisories loaded yet.</div>';
-      const trends = (trendsRes && trendsRes.data) || {};
-      const atkLabels = trends.labels || [];
-      const atkDatasets = trends.data || [];
+      // Always render the chart, even with empty data
       if (!atkLabels.length || !atkDatasets.length) {
-        cbkChartEl.innerHTML = '<div class="empty" style="padding:24px">'
-          + 'No attack trends available yet — ingest reports via Upload or Refresh.'
-          + '</div>';
+        cbkChartEl.innerHTML = '<canvas id="atkTrendsChart" style="width:100%;max-height:210px;display:block"></canvas>'
+          + '<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:8px">No data yet — API returned no attack trends.</div>';
       } else {
         const atkCanvas = cbkChartEl.querySelector('canvas#atkTrendsChart');
         if (!atkCanvas) {
-          // Create the canvas if it doesn't exist yet.
           cbkChartEl.innerHTML = '<canvas id="atkTrendsChart" style="width:100%;max-height:210px;display:block"></canvas>';
         }
         renderAtkChart(atkDatasets, atkLabels);
@@ -7510,7 +7521,7 @@
     const chartDatasets = (Array.isArray(atkDatasets) ? atkDatasets : []).map((ds, i) => ({
       label: ds.label || 'Attacks',
       data: (Array.isArray(ds.data) ? ds.data : []).map(Number),
-      borderColor: atkColors[i % atkColors.length],
+      borderColor: ds.borderColor || atkColors[i % atkColors.length],
       backgroundColor: 'transparent',
       tension: 0.3,
       pointRadius: 3,

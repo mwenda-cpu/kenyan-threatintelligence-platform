@@ -16,6 +16,7 @@ import json
 import logging
 import re
 from datetime import date, datetime
+from sqlalchemy import func, desc
 
 from . import storage_ke  # noqa: F401  (registers KE models on storage.Base)
 from .storage_ke import CAAdvisory, CBKFraudStats, KECIRTReport
@@ -220,7 +221,7 @@ class KenyaContext:
         with self.storage.get_session() as session:
             row = (
                 session.query(KECIRTReport)
-                .order_by(KECIRTReport.year.desc(), KECIRTReport.quarter.desc(), KECIRTReport.id.desc())
+                .order_by(desc(KECIRTReport.created_at))
                 .first()
             )
             return self._report_to_dict(row) if row else {}
@@ -246,7 +247,7 @@ class KenyaContext:
 
     def count_ca_advisories(self) -> int:
         with self.storage.get_session() as session:
-            return session.query(CAAdvisory).count()
+            return session.query(func.count(CAAdvisory.id)).scalar() or 0
 
     def get_cbk_fraud_trends(self) -> dict:
         """Time series of CBK fraud stats keyed by period."""
@@ -263,7 +264,7 @@ class KenyaContext:
 
     def get_latest_cbk_totals(self) -> dict:
         with self.storage.get_session() as session:
-            row = session.query(CBKFraudStats).order_by(CBKFraudStats.id.desc()).first()
+            row = session.query(CBKFraudStats).order_by(desc(CBKFraudStats.created_at)).first()
             return self._cbk_to_dict(row) if row else {}
 
     def correlate_keyword(self, keyword: str) -> dict:

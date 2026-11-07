@@ -67,6 +67,7 @@ def _upsert_advisory(storage, advisory: dict) -> bool:
             existing.published_at = advisory["published_at"]
             existing.summary = advisory["summary"]
             existing.severity = advisory["severity"]
+            existing.created_at = datetime.utcnow()
             db.commit()
             return False
         db.add(KECIRTAdvisory(**advisory))
@@ -160,7 +161,7 @@ def _ingest_pdf(path: Path, storage) -> bool:
     return _upsert_advisory(storage, advisory)
 
 
-def fetch_and_store_advisories(csv_path: Path | None = None) -> int:
+def fetch_and_store_advisories(csv_path: Path | None = None, force: bool = False) -> int:
     """Read the advisories CSV and PDFs and upsert rows into ke_cirt_advisories.
 
     Dedupe is by ``url``: existing rows are updated, new rows are inserted.
@@ -169,6 +170,10 @@ def fetch_and_store_advisories(csv_path: Path | None = None) -> int:
     inserted = 0
     updated = 0
     storage = Storage()
+
+    if force:
+        deleted = storage.delete_all_ke_cirt_data()
+        logger.info("Force mode: deleted %d existing KE-CIRT/CBK rows before re-ingesting", deleted)
 
     # ── CSV ingestion ──────────────────────────────────────────────────
     path = csv_path or _csv_path()
@@ -209,7 +214,8 @@ def fetch_and_store_advisories(csv_path: Path | None = None) -> int:
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    inserted = fetch_and_store_advisories()
+    force = "--force" in sys.argv
+    inserted = fetch_and_store_advisories(force=force)
     print(f"KE-CIRT advisories ingested: {inserted} new row(s).")
     return 0
 

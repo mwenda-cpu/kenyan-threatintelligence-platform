@@ -204,13 +204,20 @@ def rwlive_negotiation_chat(group_name: str, chat_id: str):
 @rw_live_bp.route("/api/rwlive/press/recent")
 @require_login
 def rwlive_press_recent():
-    """?country=ISO2  ?ke=1"""
+    """?country=ISO2  ?ke=1
+
+    When ?ke=1 is passed, returns ONLY NC4 Kenya press items.
+    Strictly filters by source == 'NC4 Kenya'.
+    """
     rw      = _rw()
     country = request.args.get("country")
     if request.args.get("ke"):
         try:
             from ..kenya_press import fetch_kenya_press
-            return _ok(fetch_kenya_press(limit=30))
+            items = fetch_kenya_press(limit=30)
+            # Strict NC4-only filter: drop anything not sourced from NC4 Kenya.
+            items = [it for it in items if str(it.get("source", "")).strip().lower() == "nc4 kenya"]
+            return _ok(items)
         except Exception as e:
             logger.exception("kenya_press aggregator failed: %s", e)
             return _ok([])  # graceful degradation — empty list, not 500

@@ -1441,6 +1441,23 @@ class Storage:
                 "status": r.status,
             }
 
+    # ── KE-CIRT / CBK Data Reset ──────────────────────────────────────────
+
+    def delete_all_ke_cirt_data(self) -> int:
+        """Delete all rows from ke_cirt_advisories and cbk_fraud_stats.
+
+        Used by ``fetch_ke_cirt.py --force`` to clear existing data before
+        re-ingestion. Returns the total number of rows deleted.
+        """
+        from .storage_ke import CBKFraudStats
+
+        deleted = 0
+        with self.get_session() as session:
+            deleted += session.query(KECIRTAdvisory).delete()
+            deleted += session.query(CBKFraudStats).delete()
+            session.commit()
+        return deleted
+
     # ── DNS Investigations ──────────────────────────────────────────────────
 
     def create_dns_investigation(self, domain: str) -> int:
