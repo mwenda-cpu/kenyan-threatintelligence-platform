@@ -604,6 +604,73 @@
     /*  jsvectormap overrides  */
     .jvm-tooltip { background: #1c2d3a !important; color: #e6edf3 !important; border: 1px solid #30363d !important; font-family: var(--mono) !important; font-size: .75rem !important; border-radius: 4px !important; padding: 4px 8px !important; }
     #infra-world-map { width: 100%; height: 220px; background: #0d1117; border-radius: 4px; border: 1px solid #30363d; }
+
+    /*  Mobile drawer navigation  */
+    body { overflow-x: hidden; }
+
+    nav.main-nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .mobile-menu-btn {
+      display: none;
+      background: transparent;
+      border: none;
+      color: inherit;
+      font-size: 1.5rem;
+      padding: 6px 10px;
+      cursor: pointer;
+      margin-left: auto;
+    }
+
+    /* Desktop default: drawer has zero visual footprint; children become direct flex items of nav */
+    #mobile-drawer {
+      display: contents;
+      z-index: auto;
+    }
+
+    .drawer-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 9998;
+    }
+
+    @media (max-width: 1024px) {
+      .mobile-menu-btn { display: block; }
+      nav.main-nav > #mobile-drawer {
+        display: block;
+      }
+      #mobile-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100vh;
+        height: 100dvh;
+        width: 280px;
+        max-width: 80vw;
+        background: var(--bg-elevated, #1e1e2e);
+        box-shadow: -4px 0 20px rgba(0,0,0,0.4);
+        transform: translateX(100%);
+        visibility: hidden;
+        transition: transform 0.3s ease, visibility 0s linear 0.3s;
+        z-index: 9999;
+        overflow-y: auto;
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 20px;
+        gap: 12px;
+      }
+      #mobile-drawer.open {
+        transform: translateX(0);
+        visibility: visible;
+        transition: transform 0.3s ease, visibility 0s linear 0s;
+      }
+      .drawer-overlay.open { display: block; }
+    }
   </style>
   <link rel="stylesheet" href="https://unpkg.com/jsvectormap@1.5.3/dist/css/jsvectormap.min.css"/>
 </head>
@@ -616,6 +683,11 @@
     <span class="badge">THREAT INTEL</span>
   </div>
   <nav class="main-nav">
+  <!-- .nav-links moved into #mobile-drawer -->
+  <button id="mobile-menu-btn" class="mobile-menu-btn" aria-label="Open menu"
+          aria-controls="mobile-drawer" aria-expanded="false">☰</button>
+  <div id="drawer-overlay" class="drawer-overlay"></div>
+  <div id="mobile-drawer" class="mobile-drawer" aria-hidden="true">
   <a href="#" class="nav-item active" data-tab="dashboard">Dashboard</a>
   <a href="#" class="nav-item" data-tab="soc-integrations">SOC Integrations</a>
   <a href="#" class="nav-item" data-tab="network-alerts">Network Alerts</a>
@@ -670,11 +742,13 @@
       {% endif %}
     </div>
   </div>
+
   <div class="nav-dropdown">
     <button class="nav-item" data-tab="exposure" onclick="switchTab('exposure', event)">Exposure <span class="caret">▾</span></button>
     <div class="nav-dropdown-menu">
       <a href="#" data-tab="exposure">EXP Exposure Intel</a>
     </div>
+  </div>
   </div>
 </nav>
   <div class="header-right">
@@ -7739,6 +7813,38 @@
       alert('Download failed: ' + e.message);
     }
   }
+</script>
+<script>
+(function () {
+    const btn = document.getElementById('mobile-menu-btn');
+    const drawer = document.getElementById('mobile-drawer');
+    const overlay = document.getElementById('drawer-overlay');
+    if (!btn || !drawer || !overlay) return;
+
+    function open() {
+      drawer.classList.add('open');
+      overlay.classList.add('open');
+      drawer.setAttribute('aria-hidden', 'false');
+      btn.setAttribute('aria-expanded', 'true');
+    }
+    function close() {
+      drawer.classList.remove('open');
+      overlay.classList.remove('open');
+      drawer.setAttribute('aria-hidden', 'true');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      drawer.classList.contains('open') ? close() : open();
+    });
+    overlay.addEventListener('click', close);
+    drawer.addEventListener('click', (e) => {
+      if (e.target.closest('a, button')) setTimeout(close, 0);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    });
+  })();
 </script>
 </body>
 </html>
