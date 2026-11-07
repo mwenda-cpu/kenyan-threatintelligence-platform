@@ -4927,6 +4927,11 @@ def _resolve_ke_filename(title_or_period: str, is_cbk: bool = False) -> str | No
     Normalizes the search term (lowercase, strip spaces/special chars) and
     returns the first file whose normalized name contains the search term
     or vice versa. Prefix filter: cbk_ for CBK, ke_cirt_ or ca_ for others.
+
+    Fallback: if no title match is found, returns the most recently modified
+    file with the expected prefix — this ensures newly uploaded reports are
+    linked immediately even when the extracted PDF text title differs from
+    the filename.
     """
     if not title_or_period or not KE_REPORTS_DIR.is_dir():
         return None
@@ -4943,19 +4948,23 @@ def _resolve_ke_filename(title_or_period: str, is_cbk: bool = False) -> str | No
     else:
         allowed_prefixes = ("ke_cirt_", "ca_")
 
-    # Normalize the search term
-    norm_search = re.sub(r"[^a-z0-9]+", "", str(title_or_period).lower())
-    if not norm_search:
+    # Filter files by prefix
+    prefix_files = [p for p in files if p.name.lower().startswith(allowed_prefixes)]
+    if not prefix_files:
         return None
 
-    for path in files:
-        name = path.name.lower()
-        if not name.startswith(allowed_prefixes):
-            continue
-        norm_name = re.sub(r"[^a-z0-9]+", "", name)
-        if norm_search in norm_name or norm_name in norm_search:
-            return path.name
-    return None
+    # Normalize the search term
+    norm_search = re.sub(r"[^a-z0-9]+", "", str(title_or_period).lower())
+    if norm_search:
+        for path in prefix_files:
+            norm_name = re.sub(r"[^a-z0-9]+", "", path.name.lower())
+            if norm_search in norm_name or norm_name in norm_search:
+                return path.name
+
+    # Fallback: return the most recently modified file with the right prefix.
+    # This covers newly uploaded reports whose extracted title doesn't match
+    # the filename exactly.
+    return max(prefix_files, key=lambda p: p.stat().st_mtime).name
 
 
 def _ke_ctx():
@@ -4983,14 +4992,14 @@ def api_ke_context_summary():
         try:
             fname = _resolve_ke_filename(cirt.get("title", ""))
             if fname:
-                cirt["file_url"] = "/api/ke-context/report-file/" + fname
+                cirt["file_url"] = _ke_file_url(fname)
         except Exception:
             pass
     if cbk and cbk.get("period"):
         try:
             fname = _resolve_ke_filename(cbk.get("period", ""), is_cbk=True)
             if fname:
-                cbk["file_url"] = "/api/ke-context/report-file/" + fname
+                cbk["file_url"] = _ke_file_url(fname)
         except Exception:
             pass
     return _ke_ok(
@@ -5017,7 +5026,7 @@ def api_ke_context_ca_advisories():
                 "title": r.title,
                 "threat_type": r.threat_type,
                 "date_published": str(r.date_published),
-                "file_url": "/api/ke-context/report-file/" + fname if fname else None,
+                "file_url": _ke_file_url(fname) if fname else None,
             })
     return _ke_ok(advisories)
 
