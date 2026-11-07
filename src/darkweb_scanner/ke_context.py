@@ -16,7 +16,8 @@ import json
 import logging
 import re
 from datetime import date, datetime
-from sqlalchemy import func, desc
+
+from sqlalchemy import desc, func
 
 from . import storage_ke  # noqa: F401  (registers KE models on storage.Base)
 from .storage_ke import CAAdvisory, CBKFraudStats, KECIRTReport

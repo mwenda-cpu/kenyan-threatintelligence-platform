@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from darkweb_scanner.utils.text_cleaner import sanitize_scraped_text, FALLBACK  # noqa: E402
+from darkweb_scanner.utils.text_cleaner import FALLBACK, sanitize_scraped_text  # noqa: E402
 
 
 def test_clean_text_preserved():

@@ -38,9 +38,10 @@ COPY scripts/ ./scripts/
 
 # ── Python dependencies (cached layer — copy only pyproject.toml first) ───
 COPY pyproject.toml ./
+COPY README.md ./
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir ".[all]" && \
+    pip install --no-cache-dir --default-timeout=1000 --retries=10 ".[all]" && \
     playwright install chromium && \
     mkdir -p /app/data/ke_reports /app/models
 

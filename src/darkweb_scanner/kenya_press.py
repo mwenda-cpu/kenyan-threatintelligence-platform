@@ -168,7 +168,6 @@ def fetch_kenya_press(limit: int = 20) -> List[Dict]:
     Sorted newest-first, deduplicated by URL.
     NEVER raises — always returns a list (possibly empty).
     """
-    import datetime
     from email.utils import parsedate_to_datetime
     log = logging.getLogger(__name__)
     items = []

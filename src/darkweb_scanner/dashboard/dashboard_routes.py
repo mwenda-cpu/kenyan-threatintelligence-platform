@@ -31,7 +31,13 @@ from flask import (
     url_for,
 )
 
-from ..auth import get_current_user, hash_password, logout_user, require_login, validate_password_strength
+from ..auth import (
+    get_current_user,
+    hash_password,
+    logout_user,
+    require_login,
+    validate_password_strength,
+)
 from ..crawler import CrawlConfig, run_onion_crawl_cycle
 from ..storage import HistoricalAttack, User
 from .forecaster import forecast_hits

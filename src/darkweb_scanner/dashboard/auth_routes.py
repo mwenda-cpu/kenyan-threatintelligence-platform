@@ -5,8 +5,11 @@ Auth blueprint — login, register, TOTP setup/verify, OAuth, logout.
 import logging
 import os
 import secrets
+import smtplib
 import threading
 from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from urllib.parse import urlencode
 
 import requests as http_requests
@@ -38,94 +41,71 @@ def _safe_next(next_url: str, default: str) -> str:
 
 
 def send_reset_email(to_email: str, reset_url: str) -> bool:
-    """Send a password reset email via Resend.
+    """Send a password reset email via SMTP.
 
     Returns True on success, False on failure (error is logged).
     """
-    api_key = os.getenv("RESEND_API_KEY")
-    from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+    html_body = (
+        f"<p>Click to reset your password:</p>"
+        f"<p><a href='{reset_url}'>{reset_url}</a></p>"
+        f"<p>If you did not request this, ignore this email.</p>"
+    )
 
-    if not api_key:
-        logger.error("RESEND_API_KEY not set; cannot send email to %s", to_email)
+    return _send_smtp_email(to_email, "Reset your password", html_body)
+
+
+def _send_smtp_email(to_email: str, subject: str, html_body: str) -> bool:
+    """Send an email via SMTP (e.g., Gmail). Returns True on success, False on failure."""
+    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    port_str = os.getenv("SMTP_PORT", "587")
+    try:
+        port = int(port_str)
+    except (TypeError, ValueError):
+        logger.error("Invalid SMTP_PORT %r; defaulting to 587", port_str)
+        port = 587
+    user = os.getenv("SMTP_USER")
+    password = os.getenv("SMTP_PASSWORD")
+    from_addr = os.getenv("SMTP_FROM", user)
+
+    if not host or not user or not password:
+        logger.error("SMTP config incomplete (host=%r, user=%r, password_set=%s)",
+                     host, user, bool(password))
         return False
 
     try:
-        resp = http_requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "from": from_email,
-                "to": [to_email],
-                "subject": "Reset your Kenya TI Platform password",
-                "html": (
-                    f"<p>Click to reset your password:</p>"
-                    f"<p><a href='{reset_url}'>{reset_url}</a></p>"
-                    f"<p>If you did not request this, ignore this email.</p>"
-                ),
-            },
-            timeout=10,
-        )
-        if resp.status_code in (200, 201):
-            logger.info("Password reset email sent to %s", to_email)
-            return True
-        logger.error("Resend API Error: %s", resp.text)
-        return False
-    except Exception as e:  # noqa: BLE001 - never crash the auth flow on email failure
-        logger.error(
-            "Failed to send password reset email to %s: %s", to_email, e
-        )
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = from_addr
+        msg["To"] = to_email
+        msg.attach(MIMEText(html_body, "html"))
+
+        with smtplib.SMTP(host, port, timeout=15) as server:
+            server.starttls()
+            server.login(user, password)
+            server.sendmail(from_addr, [to_email], msg.as_string())
+        logger.info("SMTP email sent to %s", to_email)
+        return True
+    except Exception as e:
+        logger.error("SMTP send failed for %s: %s", to_email, e)
         return False
 
 
 def send_verification_email(to_email: str, username: str, token: str) -> bool:
-    """Send an email verification link via Resend.
+    """Send an email verification link via SMTP.
 
     Returns True on success, False on failure (error is logged).
     """
-    api_key = os.getenv("RESEND_API_KEY")
-    from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
     base_url = os.getenv("BASE_URL", "http://localhost:8080").rstrip("/")
     verify_url = f"{base_url}/verify/{token}"
 
-    if not api_key:
-        logger.error("RESEND_API_KEY not set; cannot send email to %s", to_email)
-        return False
+    html_body = (
+        f"<p>Hello {username},</p>"
+        f"<p>Click to verify your account:</p>"
+        f"<p><a href='{verify_url}'>{verify_url}</a></p>"
+        f"<p>This link expires in 24 hours.</p>"
+    )
 
-    try:
-        resp = http_requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "from": from_email,
-                "to": [to_email],
-                "subject": "Verify your Kenya TI Platform account",
-                "html": (
-                    f"<p>Hello {username},</p>"
-                    f"<p>Click to verify your account:</p>"
-                    f"<p><a href='{verify_url}'>{verify_url}</a></p>"
-                    f"<p>This link expires in 24 hours.</p>"
-                ),
-            },
-            timeout=10,
-        )
-        if resp.status_code in (200, 201):
-            logger.info("Verification email sent to %s", to_email)
-            return True
-        logger.error("Resend API Error: %s", resp.text)
-        return False
-    except http_requests.exceptions.RequestException as e:
-        body = e.response.text if getattr(e, "response", None) is not None else str(e)
-        logger.error("Resend API Error: %s", body)
-        return False
-    except Exception as e:  # noqa: BLE001 - never crash the auth flow on email failure
-        logger.error("Failed to send verification email to %s: %s", to_email, e)
-        return False
+    return _send_smtp_email(to_email, "Verify your email", html_body)
 
 
 # ── Registration ───────────────────────────────────────────────────────────────
