@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Local SMTP (MailHog / localhost) for development; override via env for production.
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "")
-MAILGUN_FROM = os.getenv("MAILGUN_FROM", "Threat Intel <digest@intel.osintph.info>")
+MAILGUN_FROM = os.getenv("MAILGUN_FROM", "ThreatWatch <digest@intel.threatwatch.ke>")
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 SUBSCRIBERS_FILE = DATA_DIR / "digest_subscribers.txt"
 
@@ -110,7 +110,7 @@ def build_digest_pdf(feed_data: dict, scanner_summary: dict = None, date: dateti
     ]))
     text_cell = Table(
         [[Paragraph("Daily Threat Intelligence", s_h1)],
-         [Paragraph("powered by OSINT PH  ·  osintph.info", s_tagline)],
+         [Paragraph("powered by ThreatWatch  ·  threatwatch.ke", s_tagline)],
          [Paragraph(f"Edition: {date_str} (PHT)  ·  Generated: {datetime.now(timezone.utc).replace(tzinfo=None).strftime('%Y-%m-%d %H:%M UTC')}", s_meta)]],
         colWidths=[PW - 16 * mm],
     )
@@ -267,8 +267,8 @@ def build_digest_pdf(feed_data: dict, scanner_summary: dict = None, date: dateti
     story.append(HRFlowable(width=PW, thickness=0.5, color=colors.HexColor("#d0d7de")))
     story.append(Spacer(1, 5))
     story.append(Paragraph(
-        f'CONFIDENTIAL — Daily Threat Intelligence powered by <link href="https://osintph.info" color="#f85149">OSINT PH</link> · '
-        f'To unsubscribe reply UNSUBSCRIBE · Report ID: OSINTPH-DIGEST-{date_label}',
+        f'CONFIDENTIAL — Daily Threat Intelligence powered by <link href="https://threatwatch.ke" color="#f85149">ThreatWatch</link> · '
+        f'To unsubscribe reply UNSUBSCRIBE · Report ID: THREATWATCH-DIGEST-{date_label}',
         s_footer))
     doc.build(story)
     buf.seek(0)
@@ -353,13 +353,13 @@ def build_email_html(feed_data: dict, date_str: str, stats: dict) -> str:  # noq
         f'<div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;background:#f6f8fa">'
         f'<div style="background:#0d1117;padding:24px 28px;border-bottom:4px solid #f85149">'
         f'<div style="font-size:22px;font-weight:800;color:white;margin-bottom:2px">Daily Threat Intelligence</div>'
-        f'<div style="font-size:12px;color:#f85149;font-weight:700;margin-bottom:6px">powered by OSINT PH</div>'
+        f'<div style="font-size:12px;color:#f85149;font-weight:700;margin-bottom:6px">powered by ThreatWatch</div>'
         f'<div style="font-size:11px;color:#8b949e">{date_str} \u00b7 Full report attached as PDF</div>'
         f'</div>'
         f'{kev_section}{sea_section}{global_section}'
         f'<div style="padding:14px 20px 16px;background:#0d1117;margin-top:10px">'
         f'<p style="color:#8b949e;font-size:11px;margin:0">CONFIDENTIAL \u00b7 '
-        f'<a href="https://osintph.info" style="color:#f85149">osintph.info</a> \u00b7 '
+        f'<a href="https://threatwatch.ke" style="color:#f85149">threatwatch.ke</a> \u00b7 '
         f'Reply UNSUBSCRIBE to opt out</p>'
         f'</div>'
         f'</div>'
@@ -400,10 +400,10 @@ def send_digest(storage, recipients: list = None, date: datetime = None) -> dict
         logger.exception("PDF build failed")
         return {"ok": False, "error": f"PDF build failed: {e}"}
 
-    filename = f"osintph-threat-digest-{date_label}.pdf"
-    subject = f"Daily Threat Intelligence - {date_str} | OSINT PH"
+    filename = f"threatwatch-threat-digest-{date_label}.pdf"
+    subject = f"Daily Threat Intelligence - {date_str} | ThreatWatch"
     html_body = build_email_html(feed_data, date_str, stats)
-    text_body = f"Daily Threat Intelligence powered by OSINT PH\n{date_str}\nFull report attached.\nosintph.info"
+    text_body = f"Daily Threat Intelligence powered by ThreatWatch\n{date_str}\nFull report attached.\nthreatwatch.ke"
 
     if not MAILGUN_API_KEY:
         logger.error("MAILGUN_API_KEY is not set; cannot send digest")

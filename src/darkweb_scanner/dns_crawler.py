@@ -35,7 +35,7 @@ def _clean_domain(domain: str) -> str:
 def _safe_http(url: str, method: str = "get", **kwargs) -> Optional[requests.Response]:
     try:
         kwargs.setdefault("timeout", REQUEST_TIMEOUT)
-        kwargs.setdefault("headers", {"User-Agent": "OSINTPH-DNSCrawler/1.0"})
+        kwargs.setdefault("headers", {"User-Agent": "ThreatWatch-DNSCrawler/1.0"})
         return getattr(requests, method)(url, **kwargs)
     except Exception as e:
         logger.debug(f"HTTP {method} {url} failed: {e}")
@@ -165,7 +165,7 @@ def fetch_crtsh(domain: str) -> list[dict]:
     try:
         result = safe_fetch(
             f"https://crt.sh/?q=%.{domain}&output=json",
-            headers={"User-Agent": "OSINTPH-DNSCrawler/1.0"},
+            headers={"User-Agent": "ThreatWatch-DNSCrawler/1.0"},
             timeout=REQUEST_TIMEOUT,
         )
     except SafeFetchError:
@@ -748,7 +748,7 @@ def enumerate_directories(
                 f"{proto}://{target}/",
                 timeout=HTTP_TIMEOUT,
                 allow_redirects=True,
-                headers={"User-Agent": "Mozilla/5.0 (compatible; OSINTPH-DirScan/1.0)"},
+                headers={"User-Agent": "Mozilla/5.0 (compatible; ThreatWatch-DirScan/1.0)"},
                 verify=True,
             )
             base_url = f"{proto}://{target}"
@@ -767,7 +767,7 @@ def enumerate_directories(
                 url,
                 timeout=HTTP_TIMEOUT,
                 allow_redirects=follow_redirects,
-                headers={"User-Agent": "Mozilla/5.0 (compatible; OSINTPH-DirScan/1.0)"},
+                headers={"User-Agent": "Mozilla/5.0 (compatible; ThreatWatch-DirScan/1.0)"},
                 verify=True,
                 stream=True,
             )
@@ -834,7 +834,7 @@ def run_port_and_dir_scan(domain: str, ips: list[str]) -> dict:
 # ── HTTP Service / Banner Probe ────────────────────────────────────────────────
 
 HTTP_BANNER_TIMEOUT = 5
-HTTP_BANNER_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; OSINTPH-Recon/1.0)"}
+HTTP_BANNER_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; ThreatWatch-Recon/1.0)"}
 
 
 def probe_service(fqdn: str) -> Optional[dict]:

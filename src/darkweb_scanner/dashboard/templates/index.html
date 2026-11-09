@@ -954,15 +954,16 @@
     <div class="hd-card">
       <div class="hd-card-hdr">
         <div class="hd-card-title">Recent CVE News</div>
-        <button class="hd-card-action" onclick="hdGoTo('cve-panel')">CVE Panel </button>
+        <button class="hd-card-action" onclick="window.location.href='/cve-panel'">CVE Panel </button>
       </div>
       <div class="hd-card-body" id="hdCveNews"><div style="color:var(--muted);font-size:.78rem;padding:8px 0">Loading CVE data...</div></div>
     </div>
     <div class="hd-card">
       <div class="hd-card-hdr"><div class="hd-card-title"> Quick Actions</div></div>
       <div class="hd-card-body">
-<div class="hd-qa-grid">
+        {% if is_admin %}
           <button class="hd-qa-btn" onclick="toggleCrawl()"><span class="hd-qa-icon">*.</span><span><span class="hd-qa-label">Start Crawl</span><span class="hd-qa-sub">Dark web scan</span></span></button>
+        {% endif %}
           <button class="hd-qa-btn" onclick="hdGoTo('ioc-feed')"><span class="hd-qa-icon">IOC</span><span><span class="hd-qa-label">IOC Feed</span><span class="hd-qa-sub">ThreatFox live</span></span></button>
           <button class="hd-qa-btn" onclick="hdGoTo('dns')"><span class="hd-qa-icon"></span><span><span class="hd-qa-label">Investigate</span><span class="hd-qa-sub">Add target/IOC</span></span></button>
           <button class="hd-qa-btn" onclick="hdGoTo('ransomware')"><span class="hd-qa-icon"></span><span><span class="hd-qa-label">Ransomware</span><span class="hd-qa-sub">Group intel</span></span></button>
@@ -1143,7 +1144,7 @@
           </div>
           <div class="form-group">
             <label>Domain</label>
-            <input type="text" id="genDomain" placeholder="e.g. philhealth.gov.ph" style="width:100%"/>
+            <input type="text" id="genDomain" placeholder="e.g. kra.go.ke" style="width:100%"/>
           </div>
           <div class="form-group">
             <label>Industry <span style="color:var(--muted);font-size:.72rem">(bank, healthcare, government, telco, ecommerce, bpo, education)</span></label>
@@ -1177,6 +1178,13 @@
         </div>
       </div>
       <div class="panel-body">
+        <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:10px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:8px">
+          <div class="form-group" style="min-width:300px;flex:1">
+            <label>Bulk Upload (comma or newline separated)</label>
+            <textarea id="bulkKeywords" style="width:100%;min-height:70px" placeholder="e.g. M-Pesa, SIM swap, ransomware, kra.go.ke"></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="uploadKeywords()" style="align-self:flex-end">Bulk Upload</button>
+        </div>
         <div class="form-row" style="gap:10px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap">
           <div class="form-group"><label>Keyword</label><input type="text" id="newKeyword" style="width:240px" placeholder="e.g. credential dump"/></div>
           <div class="form-group">
@@ -2107,7 +2115,12 @@
           <div class="panel-body">
             <p style="color:var(--muted);font-size:.83rem">API Endpoint Base: <code>http://localhost/api/v1/</code></p>
             <p style="color:var(--muted);font-size:.83rem;margin-top:8px">See API.md in the repository root for the full list of endpoints.</p>
-            <button class="btn btn-danger" onclick="localStorage.removeItem('TI_API_KEY'); alert('API Key cleared from this browser.');">Clear Saved API Key</button>
+            <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input type="password" id="apiKeyInput" placeholder="TI_API_KEY" style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;min-width:200px"/>
+              <button class="btn btn-primary" onclick="saveApiKey()">Save API Key</button>
+              <button class="btn btn-danger" onclick="clearApiKey()">Clear Saved API Key</button>
+            </div>
+            <div id="apiKeyStatus" style="margin-top:6px;color:var(--muted);font-size:.78rem"></div>
           </div>
         </div>
       </div>
@@ -2217,12 +2230,9 @@
   function getApiKey() {
     let key = localStorage.getItem("TI_API_KEY");
     if (!key) {
-      key = prompt("Enter your TI_API_KEY (this will be saved for this browser):");
-      if (key) {
-        localStorage.setItem("TI_API_KEY", key);
-      }
+      key = localStorage.getItem("ti_api_key");
     }
-    return key;
+    return key || null;
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -2256,11 +2266,28 @@
   function getApiKey() {
     let key = localStorage.getItem('ti_api_key');
     if (!key) {
-      key = prompt('Enter your TI_API_KEY', '');
-      if (!key) return null;
-      localStorage.setItem('ti_api_key', key);
+      key = localStorage.getItem('TI_API_KEY');
     }
-    return key;
+    return key || null;
+  }
+  function saveApiKey() {
+    const input = document.getElementById('apiKeyInput');
+    const status = document.getElementById('apiKeyStatus');
+    if (!input || !status) return;
+    const key = (input.value || '').trim();
+    if (!key) { status.textContent = 'Enter an API key first.'; status.style.color = 'var(--red)'; return; }
+    localStorage.setItem('ti_api_key', key);
+    localStorage.setItem('TI_API_KEY', key);
+    input.value = '';
+    status.textContent = 'API key saved to this browser.';
+    status.style.color = 'var(--green)';
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  }
+  function clearApiKey() {
+    localStorage.removeItem('ti_api_key');
+    localStorage.removeItem('TI_API_KEY');
+    const status = document.getElementById('apiKeyStatus');
+    if (status) { status.textContent = 'API key cleared.'; status.style.color = 'var(--muted)'; setTimeout(() => { status.textContent = ''; }, 3000); }
   }
   function toast(msg, type = 'success') {
     const t = document.getElementById('toast');
@@ -2383,6 +2410,7 @@
         try {
           const res = await fetch('/api/crawl/start', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
           });
           if (!res.ok) {
@@ -2853,6 +2881,22 @@
     input.value = '';
     if (data.ok) { toast(`Imported ${data.added} keyword${data.added !== 1 ? 's' : ''}!`); loadKeywords(); }
     else toast(data.error||'Import failed','error');
+  }
+
+  async function uploadKeywords() {
+    const input = document.getElementById('bulkKeywords');
+    if (!input) return;
+    const raw = input.value || '';
+    const keywords = raw.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+    if (!keywords.length) { toast('Enter at least one keyword', 'error'); return; }
+    const res = await fetch('/api/keywords/upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keywords })
+    });
+    const data = await res.json();
+    input.value = '';
+    if (data.ok) { toast(`Added ${data.added} keyword${data.added !== 1 ? 's' : ''}!`); loadKeywords(); }
+    else toast(data.error || 'Upload failed', 'error');
   }
 
   //  Keyword generator 
@@ -3605,22 +3649,28 @@
     const el = document.getElementById('exposureResults');
     el.innerHTML = 'Loading...';
     try {
-      const [sh, us] = await Promise.all([
-        fetch('/api/exposure/shodan?query=' + encodeURIComponent(q)).then(r=>r.json()),
-        fetch('/api/exposure/urlscan?query=' + encodeURIComponent(q)).then(r=>r.json()),
+      const [shResp, usResp] = await Promise.all([
+        fetch('/api/exposure/shodan?query=' + encodeURIComponent(q)),
+        fetch('/api/exposure/urlscan?query=' + encodeURIComponent(q)),
       ]);
+      const sh = await shResp.json();
+      const us = await usResp.json();
       let html = '';
-      if (sh.results && sh.results.length) {
+      if (!shResp.ok || sh.error) {
+        html += '<p style="color:var(--red)">Error: ' + esc(sh.error || 'Shodan API request failed. Check logs.') + '</p>';
+      } else if (sh.results && sh.results.length) {
         html += '<h3>Shodan</h3><table class="ioc-table"><thead><tr><th>IP</th><th>Port</th><th>Service</th></tr></thead><tbody>' +
           sh.results.map(r=>`<tr><td>${esc(r.ip)}</td><td>${esc(r.port)}</td><td>${esc(r.service)}</td></tr>`).join('') + '</tbody></table>';
       } else {
-        html += '<p style="color:var(--muted)">' + esc(sh.error || 'No Shodan results') + '</p>';
+        html += '<p style="color:var(--muted)">No Shodan results found for ' + esc(q) + '</p>';
       }
-      if (us.results && us.results.length) {
+      if (!usResp.ok || us.error) {
+        html += '<p style="color:var(--red)">Error: URLScan API request failed. Check logs.</p>';
+      } else if (us.results && us.results.length) {
         html += '<h3>URLScan</h3><table class="ioc-table"><thead><tr><th>URL</th><th>Screenshot</th><th>ASN</th></tr></thead><tbody>' +
           us.results.map(r=>`<tr><td>${esc(r.url)}</td><td>${r.screenshot?`<a href="${esc(r.screenshot)}" target="_blank">img</a>`:''}</td><td>${esc(r.asn)}</td></tr>`).join('') + '</tbody></table>';
       } else {
-        html += '<p style="color:var(--muted)">' + esc(us.error || 'No URLScan results') + '</p>';
+        html += '<p style="color:var(--muted)">No URLScan results found for ' + esc(q) + '</p>';
       }
       el.innerHTML = html;
     } catch(e) { el.innerHTML = '<p style="color:var(--red)">Error loading exposure data.</p>'; }
@@ -3630,8 +3680,6 @@
   async function loadNetworkAlerts() {
     const table = document.getElementById('ddos-alerts-table');
     if (!table) return;
-    const key = getApiKey();
-    if (!key) { table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">API key required.</td></tr>'; return; }
     const sectorSel = document.getElementById('sector-filter');
     const sector = sectorSel ? sectorSel.value : 'all';
     let url = '/api/v1/threats';
@@ -3641,12 +3689,12 @@
       url += '?keyword=DDoS';
     }
     try {
-      const res = await fetch(url, { headers: { 'X-API-Key': key } });
+      const res = await fetch(url, { credentials: 'same-origin' });
       const data = await res.json();
       const rows = Array.isArray(data) ? data : (data.value || []);
       table.innerHTML = '';
       if (!rows.length) {
-        table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">No DDoS alerts found.</td></tr>';
+        table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">No alerts detected yet.</td></tr>';
         return;
       }
       rows.forEach(r => {
@@ -3664,7 +3712,7 @@
       });
     } catch (e) {
       console.error('[Network Alerts] fetch failed', e);
-      table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--red)">Error loading alerts.</td></tr>';
+      table.innerHTML = '<tr><td colspan="4" style="padding:8px;color=var(--red)">Error loading alerts.</td></tr>';
     }
   }
   window.loadNetworkAlerts = loadNetworkAlerts;
@@ -3672,40 +3720,29 @@
   async function loadKecirtAdvisories() {
     const table = document.getElementById('ke-cirt-advisories-table');
     if (!table) return;
-    const key = getApiKey();
-    if (!key) {
-      table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">API key required.</td></tr>';
-      return;
-    }
     try {
-      const res = await fetch('/api/v1/advisories', { headers: { 'X-API-Key': key } });
+      const res = await fetch('/api/ke-context/ca-advisories?limit=20');
       const data = await res.json();
-      const rows = Array.isArray(data) ? data : [];
+      const rows = Array.isArray(data) ? data : (data && data.data ? data.data : []);
       table.innerHTML = '';
       if (!rows.length) {
         table.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--muted)">No advisories found.</td></tr>';
         return;
       }
-      const severityClass = {
-        critical: 'badge-critical',
-        high: 'badge-high',
-        medium: 'badge-medium',
-        low: 'badge-disrupted',
-      };
       rows.forEach(r => {
-        const sev = String(r.severity || '').toLowerCase();
-        const cls = severityClass[sev] || 'badge-disrupted';
-        const published = r.published_at
-          ? new Date(r.published_at.endsWith('Z') ? r.published_at : r.published_at + 'Z').toLocaleString()
+        const published = r.date_published
+          ? new Date(r.date_published.endsWith('Z') ? r.date_published : r.date_published + 'Z').toLocaleString()
           : '-';
+        const source = r.threat_type || r.source || 'KE-CIRT';
+        const link = r.file_url
+          ? `<a href="${esc(r.file_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline">${esc(r.title || 'Advisory')}</a>`
+          : esc(r.title || 'Advisory');
         table.innerHTML +=
           '<tr>' +
           '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(published)+'</td>' +
-          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(r.source || '-')+'</td>' +
-          '<td style="padding:8px;border-bottom:1px solid var(--border)"><span class="badge '+cls+'">'+esc(sev)+'</span></td>' +
-          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+(r.url && r.url.startsWith("file:///")
-            ? '<a href="/api/v1/advisories/'+escAttr(r.id)+'/download" target="_blank" style="color:var(--accent);text-decoration:underline">'+esc(r.title)+'</a>'
-            : '<a href="'+escAttr(r.url)+'" target="_blank" style="color:var(--accent);text-decoration:underline">'+esc(r.title)+'</a>')+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+esc(source)+'</td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)"><span class="badge badge-medium">info</span></td>' +
+          '<td style="padding:8px;border-bottom:1px solid var(--border)">'+link+'</td>' +
           '</tr>';
       });
     } catch (e) {
@@ -3759,16 +3796,11 @@
     table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--muted)">Loading...</td></tr>';
     if (alertEl) alertEl.style.display = 'none';
     if (countEl) countEl.textContent = '';
-    const key = getApiKey();
-    if (!key) {
-      table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--muted)">API key required.</td></tr>';
-      return;
-    }
     try {
       const url = query
         ? '/api/v1/fintech/lookup?identifier=' + encodeURIComponent(query)
         : '/api/v1/fintech/watchlist';
-      const res = await fetch(url, { headers: { 'X-API-Key': key } });
+      const res = await fetch(url, { credentials: 'same-origin' });
       if (query) {
         if (res.status === 404) {
           table.innerHTML = '';
@@ -3802,7 +3834,7 @@
       const rows = await res.json();
       table.innerHTML = '';
       if (!rows.length) {
-        table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--muted)">No watchlist entries found.</td></tr>';
+        table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--muted)">No fintech IOCs tracked yet.</td></tr>';
         if (countEl) countEl.textContent = '0 entries';
         return;
       }
@@ -3823,6 +3855,7 @@
       table.innerHTML = '<tr><td colspan="6" style="padding:8px;color:var(--red)">Error loading watchlist.</td></tr>';
     }
   }
+  window.loadFintechCorrelation = loadFintechCorrelation;
 
   function showFintechAlert(identifier, detected, threatType) {
     const el = document.getElementById('fintech-alert');
@@ -3841,7 +3874,6 @@
       el.textContent = '\u2705 Clean: No known threats found for this identifier.';
     }
   }
-  window.loadFintechCorrelation = loadFintechCorrelation;
 
   async function changePassword() {
     const body = { current_password: document.getElementById('currentPw').value, new_password: document.getElementById('newPw').value, confirm_password: document.getElementById('confirmPw').value };
@@ -4737,7 +4769,7 @@
         <div><label>TTPs <span class="hint">comma-separated</span></label><input type="text" id="ai_ttps" placeholder="e.g. RaaS, double extortion, phishing"/></div>
       </div>
       <div class="form-row full">
-        <div><label>Known Victims in Kenya <span class="hint">comma-separated</span></label><input type="text" id="ai_ke_victims" placeholder="e.g. PhilHealth, BSP"/></div>
+        <div><label>Known Victims in Kenya <span class="hint">comma-separated</span></label><input type="text" id="ai_ke_victims" placeholder="e.g. KRA, Safaricom"/></div>
       </div>
       <div class="form-row full">
         <div><label>.onion Seeds <span class="hint">one per line</span></label><textarea id="ai_onion_seeds" rows="2" placeholder="http://example.onion"></textarea></div>
@@ -7524,7 +7556,7 @@
     const cbkChartEl = document.getElementById('keCbkChart');
     const esc = s => { const d = document.createElement('div'); d.textContent = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; };
     try {
-      const keFetch = (url) => fetch(url, { signal: AbortSignal.timeout(1000) }).then(r => r.json()).catch(() => ({ ok: false, error: 'timeout or network error' }));
+      const keFetch = (url) => fetch(url, { signal: AbortSignal.timeout(10000) }).then(r => r.json()).catch(() => ({ ok: false, error: 'timeout or network error' }));
       const [summaryRes, caRes, trendsRes] = await Promise.all([
         keFetch('/api/ke-context/summary'),
         keFetch('/api/ke-context/ca-advisories?limit=20'),
@@ -7641,7 +7673,7 @@
     out.innerHTML = 'Correlating...';
     if (corrResults) corrResults.innerHTML = '';
     try {
-      const res = await (await fetch('/api/ke-context/correlate?keyword=' + encodeURIComponent(kw), { signal: AbortSignal.timeout(1000) })).json().catch(() => ({ ok: false, error: 'timeout' }));
+      const res = await (await fetch('/api/ke-context/correlate?keyword=' + encodeURIComponent(kw), { signal: AbortSignal.timeout(30000) })).json().catch(() => ({ ok: false, error: 'timeout' }));
       const corrItems = Array.isArray(res.data) ? res.data : [];
       const corrEsc = s => { const d = document.createElement('div'); d.textContent = (s === null || s === undefined) ? '' : String(s); return d.innerHTML; };
       if (!corrItems.length) {
@@ -7841,6 +7873,9 @@
       btn.setAttribute('aria-expanded', 'true');
     }
     function close() {
+      if (drawer.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       drawer.classList.remove('open');
       overlay.classList.remove('open');
       drawer.setAttribute('aria-hidden', 'true');

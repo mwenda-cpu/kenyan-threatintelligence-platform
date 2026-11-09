@@ -5,7 +5,7 @@
 The fastest way to get running on any fresh Linux server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/osintph/threatintel-platform/main/deploy.sh -o /tmp/deploy.sh && sudo bash /tmp/deploy.sh
+curl -fsSL https://raw.githubusercontent.com/mwenda-cpu/kenyan-threatintelligence-platform/main/deploy.sh -o /tmp/deploy.sh && sudo bash /tmp/deploy.sh
 ```
 
 This installs Docker, clones the repo, configures Tor, generates secrets, and starts all services automatically.
@@ -64,7 +64,7 @@ ufw enable
 
 ```bash
 su - scanner
-curl -fsSL https://raw.githubusercontent.com/osintph/threatintel-platform/main/deploy.sh -o /tmp/deploy.sh && \
+curl -fsSL https://raw.githubusercontent.com/mwenda-cpu/kenyan-threatintelligence-platform/main/deploy.sh -o /tmp/deploy.sh && \
   DOMAIN=scanner.yourdomain.com SSL_EMAIL=you@example.com sudo bash /tmp/deploy.sh
 ```
 
@@ -189,7 +189,7 @@ docker compose up -d
 
 ## Web Check Integration
 
-Web Check provides OSINT analysis for any domain — DNS, SSL, headers, ports, tech stack, and more. It runs as a separate service at `webcheck.osintph.info` and is accessible via the **🔍 Web Check** button in the dashboard nav bar.
+Web Check provides OSINT analysis for any domain — DNS, SSL, headers, ports, tech stack, and more. It runs as a separate service at `webcheck.threatwatch.ke` and is accessible via the **🔍 Web Check** button in the dashboard nav bar.
 
 ### Fresh Deploy Steps
 
@@ -238,13 +238,13 @@ docker compose up -d --build nginx
 
 ### SSL Renewal
 
-The webcheck.osintph.info cert renews automatically via the certbot cron job inside the nginx container as long as the container stays running.
+The webcheck.threatwatch.ke cert renews automatically via the certbot cron job inside the nginx container as long as the container stays running.
 
 ### Troubleshooting
 
 **Web Check not loading:** `docker compose logs webcheck`
 
-> **Note:** After deploying your own instance, update the Web Check button URL in `src/darkweb_scanner/dashboard/templates/index.html` — search for `webcheck.osintph.info` and replace with your own domain e.g. `webcheck.yourdomain.com`.
+> **Note:** After deploying your own instance, update the Web Check button URL in `src/darkweb_scanner/dashboard/templates/index.html` — search for `webcheck.threatwatch.ke` and replace with your own domain e.g. `webcheck.yourdomain.com`.
 
 **502 Bad Gateway on webcheck subdomain:** Container may still be starting — wait 30 seconds and retry.
 

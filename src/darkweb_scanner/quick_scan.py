@@ -338,7 +338,10 @@ async def run_quick_scan(session_id: int, storage, tor_client) -> None:
             counters["urls_visited"] += 1
             logger.info("Quick scan %s: fetch complete %s (HTTP %s)", session_id, url, status)
             text = _extract_page_text(html)
+            target_lower = (target_value or "").lower()
+            found_variants: set = set()
             for match in find_matches(text, variants):
+                found_variants.add(match["variant"].lower())
                 storage.add_quick_scan_finding(
                     session_id=session_id,
                     source_name=source_name,
@@ -351,6 +354,24 @@ async def run_quick_scan(session_id: int, storage, tor_client) -> None:
                 logger.info(
                     "Quick scan %s: finding created for variant %r at %s (high_signal=%s)",
                     session_id, match["variant"], url, match["high_signal"],
+                )
+            # Belt-and-suspenders: if the raw target_value appears on the page but
+            # find_matches did not catch it (e.g. variants list is empty or stale),
+            # still record a finding so target mentions are never missed.
+            if target_lower and target_lower not in found_variants and target_lower in text:
+                idx = text.lower().find(target_lower)
+                storage.add_quick_scan_finding(
+                    session_id=session_id,
+                    source_name=source_name,
+                    url=url,
+                    matched_variant=target_value,
+                    context=extract_context(text, idx, idx + len(target_value)),
+                    high_signal=False,
+                )
+                counters["findings"] += 1
+                logger.info(
+                    "Quick scan %s: target-mention finding for %r at %s",
+                    session_id, target_value, url,
                 )
             return _extract_links(html, url)
 

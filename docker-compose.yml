@@ -110,7 +110,7 @@ services:
       - DOMAIN=${DOMAIN:-}
       - SSL_EMAIL=${SSL_EMAIL:-}
       - WWW_DOMAIN=${WWW_DOMAIN:-}
-      - THREATWATCH_DOMAIN=threatwatch.osintph.info
+      - THREATWATCH_DOMAIN=threatwatch.ke
     ports:
       - "80:80"
       - "443:443"
@@ -118,7 +118,7 @@ services:
       - nginx_certs:/etc/nginx/certs
       - letsencrypt:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot
-      - ./www:/var/www/osintph-www:ro
+      - ./www:/var/www/threatwatch-www:ro
       - ./www-threatwatch:/var/www/threatwatch:ro
     networks:
       - scanner_net

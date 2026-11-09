@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 public_bp = Blueprint("public", __name__)
 
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "")
-MAILGUN_DOMAIN  = os.getenv("MAILGUN_DOMAIN", "intel.osintph.info")
-FROM_ADDRESS    = f"OSINT PH <noreply@{MAILGUN_DOMAIN}>"
-PDF_URL         = "https://www.osintph.info/files/osintph-threat-brief.pdf"
+MAILGUN_DOMAIN  = os.getenv("MAILGUN_DOMAIN", "intel.threatwatch.ke")
+FROM_ADDRESS    = f"ThreatWatch <noreply@{MAILGUN_DOMAIN}>"
+PDF_URL         = "https://threatwatch.ke/files/threat-brief.pdf"
 
 
 @public_bp.route("/api/send-brief", methods=["POST"])
@@ -30,7 +30,7 @@ def send_brief():
     user_text = "\n".join([
         f"Hi {name},",
         "",
-        "Thank you for your interest in the OSINT PH Threat Intelligence Brief.",
+        "Thank you for your interest in the ThreatWatch Threat Intelligence Brief.",
         "",
         "You can download your copy using the link below:",
         PDF_URL,
@@ -42,8 +42,8 @@ def send_brief():
         "If you have questions or would like to discuss a tailored threat",
         "assessment for your organisation, feel free to reply to this email.",
         "",
-        "-- OSINT PH Team",
-        "https://osintph.info",
+        "-- ThreatWatch Team",
+        "https://threatwatch.ke",
     ])
 
     user_html = f"""
@@ -78,7 +78,7 @@ def send_brief():
         <p style="font-family:'Share Tech Mono',monospace;font-size:9px;color:#FF5C5C;letter-spacing:3px;text-transform:uppercase;margin:0 0 20px">Threat Intelligence</p>
         <h1 style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#f0f6fc;margin:0 0 16px;line-height:1.2">Your Threat Brief<br>is Ready</h1>
         <p style="color:#8b949e;font-size:13px;line-height:1.8;margin:0 0 28px">Hi {name},<br><br>
-        Thank you for your interest in OSINT PH threat intelligence. Your copy of the brief is ready to download.</p>
+        Thank you for your interest in ThreatWatch threat intelligence. Your copy of the brief is ready to download.</p>
 
         <!-- Download button -->
         <table cellpadding="0" cellspacing="0" style="margin-bottom:28px"><tr><td>
@@ -97,10 +97,10 @@ def send_brief():
       <tr><td style="padding:20px 32px;border-top:1px solid #30363d;background:#0d1117">
         <table width="100%" cellpadding="0" cellspacing="0"><tr>
           <td style="font-family:'Share Tech Mono',monospace;font-size:10px;color:#484f58">
-            &copy; 2026 OSINT PH &mdash; Digital Forensics &amp; Cybersecurity
+            &copy; 2026 ThreatWatch &mdash; Digital Forensics &amp; Cybersecurity
           </td>
           <td align="right" style="font-family:'Share Tech Mono',monospace;font-size:10px">
-            <a href="https://osintph.info" style="color:#8b949e;text-decoration:none">osintph.info</a>
+            <a href="https://threatwatch.ke" style="color:#8b949e;text-decoration:none">threatwatch.ke</a>
           </td>
         </tr></table>
       </td></tr>
@@ -119,7 +119,7 @@ def send_brief():
             data={
                 "from":    FROM_ADDRESS,
                 "to":      f"{name} <{email}>",
-                "subject": "Your OSINT PH Threat Intelligence Brief",
+                "subject": "Your ThreatWatch Threat Intelligence Brief",
                 "text":    user_text,
                 "html":    user_html,
             },
@@ -150,8 +150,8 @@ def send_brief():
             auth=("api", MAILGUN_API_KEY),
             data={
                 "from":    FROM_ADDRESS,
-                "to":      "sb@osintph.info",
-                "subject": f"[OSINT PH] New download — {name}",
+                "to":      "admin@threatwatch.ke",
+                "subject": f"[ThreatWatch] New download — {name}",
                 "text":    notify_text,
             },
             timeout=10,

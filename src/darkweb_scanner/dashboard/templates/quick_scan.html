@@ -45,6 +45,11 @@
       border-radius: 6px; padding: 8px 11px; font-size: 0.85rem; font-family: var(--font); width: 100%;
     }
     input[type="text"]:focus, select:focus { outline: none; border-color: var(--accent); }
+textarea {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 11px; font-size: 0.85rem; font-family: var(--mono); width: 100%;
+}
+textarea:focus { outline: none; border-color: var(--accent); }
     .form-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
     .form-row > div { flex: 1; min-width: 220px; }
 
@@ -139,6 +144,14 @@
         {% endfor %}
       </div>
       <div style="margin-top:18px">
+        <label class="fld" for="bulkKeywords">Mass Keyword Upload</label>
+        <textarea id="bulkKeywords" rows="4" placeholder="Paste keywords here, one per line or comma-separated"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="uploadKeywords()">Upload Keywords</button>
+          <div id="keywordUploadStatus" style="font-size:0.8rem;color:var(--muted);min-width:150px"></div>
+        </div>
+      </div>
+      <div style="margin-top:18px">
         <button class="btn btn-primary" id="qs-start" onclick="startScan()">▶ Start Scan</button>
       </div>
     </div>
@@ -215,6 +228,40 @@
     if (!iso) return '—';
     const d = new Date(iso + 'Z');
     return isNaN(d) ? iso : d.toLocaleString();
+  }
+
+  async function uploadKeywords() {
+    const input = document.getElementById('bulkKeywords');
+    const status = document.getElementById('keywordUploadStatus');
+    if (!input || !status) return;
+    const raw = input.value || '';
+    const keywords = raw.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+    if (!keywords.length) { status.textContent = 'Enter at least one keyword'; status.style.color = 'var(--red)'; return; }
+    status.textContent = 'Uploading...';
+    status.style.color = 'var(--muted)';
+    console.log('[keywords/upload] sending', keywords.length, 'keywords');
+    try {
+      const res = await fetch('/api/keywords/upload', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords }),
+      });
+      const data = await res.json();
+      console.log('[keywords/upload] response', data);
+      if (data.ok) {
+        status.textContent = keywords.length + ' submitted, ' + data.added + ' added';
+        status.style.color = 'var(--green)';
+        input.value = '';
+      } else {
+        status.textContent = data.error || 'Upload failed';
+        status.style.color = 'var(--red)';
+      }
+    } catch (e) {
+      console.error('[keywords/upload] error', e);
+      status.textContent = 'Network error';
+      status.style.color = 'var(--red)';
+    }
   }
 
   async function startScan() {

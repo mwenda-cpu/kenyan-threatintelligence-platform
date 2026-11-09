@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  threatintel-platform — Zero-prerequisite deployment script
-#  Repo: https://github.com/osintph/threatintel-platform
+#  Repo: https://github.com/mwenda-cpu/kenyan-threatintelligence-platform
 #
 #  Usage (recommended):
-#    curl -fsSL https://raw.githubusercontent.com/osintph/threatintel-platform/main/deploy.sh -o /tmp/deploy.sh && sudo bash /tmp/deploy.sh
+#    curl -fsSL https://raw.githubusercontent.com/mwenda-cpu/kenyan-threatintelligence-platform/main/deploy.sh -o /tmp/deploy.sh && sudo bash /tmp/deploy.sh
 #
 #  Or if already downloaded:
 #    sudo bash deploy.sh
@@ -16,7 +16,7 @@
 # =============================================================================
 set -euo pipefail
 
-REPO_URL="https://github.com/osintph/threatintel-platform"
+REPO_URL="https://github.com/mwenda-cpu/kenyan-threatintelligence-platform"
 RUN_USER="${SUDO_USER:-$(whoami)}"
 RUN_USER_HOME=$(getent passwd "$RUN_USER" | cut -d: -f6)
 INSTALL_DIR="${INSTALL_DIR:-${RUN_USER_HOME}/threatintel-platform}"

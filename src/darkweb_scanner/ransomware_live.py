@@ -34,11 +34,11 @@ def has_pro_key() -> bool:
 
 
 def _pro_headers() -> dict:
-    return {"X-API-KEY": API_KEY, "Accept": "application/json", "User-Agent": "OSINTPH/1.0"}
+    return {"X-API-KEY": API_KEY, "Accept": "application/json", "User-Agent": "ThreatWatch/1.0"}
 
 
 def _v2_headers() -> dict:
-    return {"Accept": "application/json", "User-Agent": "OSINTPH/1.0"}
+    return {"Accept": "application/json", "User-Agent": "ThreatWatch/1.0"}
 
 
 def _get(path: str, pro: bool = True, params: dict = None):

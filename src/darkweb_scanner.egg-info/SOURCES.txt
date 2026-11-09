@@ -10,6 +10,7 @@ src/darkweb_scanner/digest.py
 src/darkweb_scanner/dns_crawler.py
 src/darkweb_scanner/exposure_intel.py
 src/darkweb_scanner/feeds.py
+src/darkweb_scanner/http_client.py
 src/darkweb_scanner/investigations.py
 src/darkweb_scanner/ip_lookup.py
 src/darkweb_scanner/ke_context.py
@@ -87,3 +88,5 @@ src/darkweb_scanner/scrapers/osint_enrichment.py
 src/darkweb_scanner/scrapers/paste_scraper.py
 src/darkweb_scanner/scrapers/ransomware_scraper.py
 src/darkweb_scanner/scrapers/seed_assets.py
+src/darkweb_scanner/utils/__init__.py
+src/darkweb_scanner/utils/text_cleaner.py

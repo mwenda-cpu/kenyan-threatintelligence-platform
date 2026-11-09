@@ -42,7 +42,7 @@ def _fetch_onion(url: str) -> Optional[str]:
             url,
             proxies=TOR_PROXY,
             timeout=REQUEST_TIMEOUT,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; OSINTPH-TorScraper/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; ThreatWatch-TorScraper/1.0)"},
         )
         resp.raise_for_status()
         return resp.text

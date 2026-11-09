@@ -19,11 +19,16 @@ the allowlist and IP-blocklist models do not apply.
 
 import ipaddress
 import json as _json
+import logging
 import socket
+import time
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import requests as _requests
+import certifi
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_EXTERNAL_HOSTS: frozenset = frozenset({
     # Abuse.ch threat-intel feeds
@@ -124,13 +129,61 @@ def _is_private_ip(addr: str) -> bool:
 
 
 def _resolve_and_check(hostname: str) -> None:
-    """Resolve hostname and raise SafeFetchError if any resolved IP is private."""
-    try:
-        infos = socket.getaddrinfo(hostname, None)
-    except socket.gaierror as exc:
-        raise SafeFetchError(
-            f"DNS resolution failed for {hostname!r}: {exc}"
-        ) from exc
+    """Resolve hostname and raise SafeFetchError if any resolved IP is private.
+
+    Retries DNS resolution up to 3 times with a short backoff. On persistent
+    failure, falls back to Google DNS (8.8.8.8) via a direct query so that
+    transient resolver issues (e.g. Docker DNS) do not hard-fail the request.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(3):
+        try:
+            infos = socket.getaddrinfo(hostname, None)
+            if attempt > 0:
+                logger.info(
+                    "[http_client] DNS retry %d succeeded for %s",
+                    attempt + 1,
+                    hostname,
+                )
+            break
+        except socket.gaierror as exc:
+            last_exc = exc
+            logger.warning(
+                "[http_client] DNS attempt %d failed for %s: %s",
+                attempt + 1,
+                hostname,
+                exc,
+            )
+            if attempt < 2:
+                time.sleep(0.3 * (attempt + 1))
+    else:
+        # All retries exhausted — try Google DNS directly as a fallback
+        logger.info(
+            "[http_client] DNS retries exhausted for %s; attempting Google DNS fallback",
+            hostname,
+        )
+        try:
+            import dns.resolver  # type: ignore
+
+            resolver = dns.resolver.Resolver()
+            resolver.nameservers = ["8.8.8.8"]
+            answers = resolver.resolve(hostname, "A")
+            infos = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (str(a.address), 0)) for a in answers]
+            logger.info(
+                "[http_client] Google DNS fallback resolved %s to %s",
+                hostname,
+                [str(a.address) for a in answers],
+            )
+        except Exception as fallback_exc:
+            logger.warning(
+                "[http_client] DNS resolution failed for %s (retries=%d, google_dns_failed=%s)",
+                hostname,
+                3,
+                fallback_exc,
+            )
+            raise SafeFetchError(
+                f"DNS resolution failed for {hostname!r}: {last_exc}"
+            ) from last_exc
     for info in infos:
         addr = info[4][0]
         if _is_private_ip(addr):
@@ -211,7 +264,7 @@ def safe_fetch(
     """
     _validate_url(url)
 
-    _hdrs = {"User-Agent": "OSINTPH/1.0", "Accept": "application/json, */*"}
+    _hdrs = {"User-Agent": "ThreatWatch/1.0", "Accept": "application/json, */*"}
     if headers:
         _hdrs.update(headers)
 
@@ -225,7 +278,7 @@ def safe_fetch(
                 json=req_json,
                 timeout=timeout,
                 allow_redirects=False,
-                verify=True,
+                verify=certifi.where(),
             )
         except _requests.exceptions.SSLError as exc:
             raise SafeFetchError(

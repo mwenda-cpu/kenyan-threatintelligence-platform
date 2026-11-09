@@ -243,7 +243,7 @@ def fetch_rss_items(days_back: int = 1, limit_per_source: int = 5) -> list[dict]
     for source in RSS_SOURCES:
         try:
             r = requests.get(source["url"], timeout=REQUEST_TIMEOUT,
-                             headers={"User-Agent": "OSINTPH-ThreatFeed/1.0"})
+                              headers={"User-Agent": "ThreatWatch-ThreatFeed/1.0"})
             root = ET.fromstring(r.content)
 
             ns = ""

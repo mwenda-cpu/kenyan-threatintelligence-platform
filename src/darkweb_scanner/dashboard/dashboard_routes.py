@@ -49,6 +49,14 @@ logger = logging.getLogger(__name__)
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
+
+@dashboard_bp.errorhandler(Exception)
+def _dashboard_errorhandler(exc):
+    """Last-resort safety net: never let an unhandled exception crash the socket."""
+    logger.exception("Unhandled dashboard error: %s", exc)
+    return jsonify({"error": "internal server error"}), 500
+
+
 # Config is read-only at /app/config — write user edits to /app/data instead
 CONFIG_DIR = Path(os.getenv("CONFIG_DIR", "/app/config"))
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
@@ -212,7 +220,11 @@ def api_cve_correlate():
 @dashboard_bp.route("/api/stats")
 @require_login
 def api_stats():
-    return jsonify(get_storage().get_stats())
+    try:
+        return jsonify(get_storage().get_stats())
+    except Exception as e:
+        logger.exception("/api/stats failed")
+        return jsonify({"error": "stats unavailable"}), 500
 
 
 @dashboard_bp.route("/api/predictive/threat-level", methods=["GET"])
@@ -603,6 +615,25 @@ def api_keywords_import():
     return jsonify({"ok": True, "added": added})
 
 
+@dashboard_bp.route("/api/keywords/upload", methods=["POST"])
+@require_login
+def api_keywords_upload():
+    """Bulk-upload crawler keywords from a comma/newline-separated list."""
+    data = request.get_json() or {}
+    keywords = data.get("keywords", [])
+    if not isinstance(keywords, list):
+        return jsonify({"error": "keywords must be an array"}), 400
+    storage = get_storage()
+    added = 0
+    for kw in keywords:
+        kw = (kw or "").strip()
+        if kw and len(kw) > 2:
+            if storage.add_keyword(kw, category="custom"):
+                added += 1
+    logger.info("[keywords/upload] bulk upload: %d keyword(s) submitted, %d newly added", len(keywords), added)
+    return jsonify({"ok": True, "added": added})
+
+
 # ── Keyword generator ──────────────────────────────────────────────────────────
 
 
@@ -649,7 +680,7 @@ def api_keywords_generate():
 
     # ── Domain variants ──
     if domain:
-        bare = domain.split(".")[0]  # e.g. "philhealth" from "philhealth.gov.ph"
+        bare = domain.split(".")[0]  # e.g. "kra" from "kra.go.ke"
         tld = ".".join(domain.split(".")[1:]) if "." in domain else ""
 
         results["brand_monitoring"].update([domain, bare])
@@ -684,7 +715,7 @@ def api_keywords_generate():
     industry_keywords = {
         "bank": ["swift", "iban", "routing number", "wire transfer", "core banking", "atm skimmer"],
         "healthcare": ["patient records", "ehr", "medical records", "hipaa", "phi"],
-        "government": [".gov.ph", "gsis", "philsys", "umid", "tin number"],
+        "government": [".go.ke", "huduma", "ecitizen", "kra pin", "ifmis"],
         "telco": ["sim swap", "imsi", "subscriber data", "cdr"],
         "insurance": ["policy data", "claims data", "insured"],
         "ecommerce": ["customer database", "order dump", "payment cards", "cvv"],
@@ -880,7 +911,8 @@ def api_crawl_status():
             "stats": stats,
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.exception("/api/crawl/status failed")
+        return jsonify({"status": "idle", "active": False, "session": None, "stats": {}}), 200
 
 
 # ── User management API (admin only) ──────────────────────────────────────────
@@ -1143,7 +1175,10 @@ def api_exposure_shodan():
 
     from ..exposure_intel import shodan_search
     query = request.args.get("query", "")
-    return jsonify(shodan_search(query))
+    result = shodan_search(query)
+    if result.get("error") and not result.get("results"):
+        return jsonify({"error": "Shodan API request failed. Check logs."}), 502
+    return jsonify(result)
 
 
 @dashboard_bp.route("/api/exposure/urlscan", methods=["GET"])
@@ -2443,7 +2478,7 @@ def api_dns_enrich(inv_id: int):
             headers={
                 "X-API-Key": api_key,
                 "Accept": "application/json",
-                "User-Agent": "OSINTPH-DNSCrawler/1.0",
+                "User-Agent": "ThreatWatch-DNSCrawler/1.0",
             },
             timeout=20,
         )
@@ -2697,7 +2732,7 @@ def api_dns_certs(domain: str):
     try:
         _result = safe_fetch(
             f"https://crt.sh/?q=%.{domain}&output=json",
-            headers={"User-Agent": "OSINTPH-DNSCrawler/1.0", "Accept": "application/json"},
+            headers={"User-Agent": "ThreatWatch-DNSCrawler/1.0", "Accept": "application/json"},
             timeout=30,
         )
     except SafeFetchError as e:
@@ -3301,7 +3336,7 @@ window._ready = true;
             Paragraph('<font color="#f85149"><b>⬡</b></font>', S("logo", fontSize=28, leading=32, textColor=C_RED)),
             Table([
                 [Paragraph("Infrastructure Recon Report", s_h1)],
-                [Paragraph('<font color="#f85149">OSINT PH  ·  osintph.info</font>',
+                [Paragraph('<font color="#f85149">Threat Intelligence Platform  ·  Kenya</font>',
                             S("tl", fontSize=9, fontName="Helvetica-Bold", textColor=C_RED, leading=13))],
                 [Paragraph(f'Target: <font color="#58a6ff"><b>{domain}</b></font>  ·  '
                            f'Investigated: {created}  ·  Generated: {dt.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M UTC")}',
@@ -3584,7 +3619,7 @@ window._ready = true;
         try:
             _cr_result = safe_fetch(
                 f"https://crt.sh/?q=%.{domain}&output=json",
-                headers={"User-Agent": "OSINTPH-PDFGen/1.0", "Accept": "application/json"},
+                headers={"User-Agent": "ThreatWatch-PDFGen/1.0", "Accept": "application/json"},
                 timeout=20,
             )
             if _cr_result["status"] == 200:
@@ -3851,8 +3886,8 @@ window._ready = true;
     story.append(HRFlowable(width=PW, thickness=0.5, color=C_BORDER))
     story.append(Spacer(1, 4))
     story.append(Paragraph(
-        f"CONFIDENTIAL — Infrastructure Recon Report  ·  OSINT PH / osintph.info  ·  "
-        f"Target: {domain}  ·  Report ID: OSINTPH-DNS-{inv_id}-{dt.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d')}",
+        f"CONFIDENTIAL — Infrastructure Recon Report  ·  ThreatWatch Kenya  ·  "
+        f"Target: {domain}  ·  Report ID: ThreatWatch-DNS-{inv_id}-{dt.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d')}",
         s_foot))
 
     try:
@@ -3864,7 +3899,7 @@ window._ready = true;
     return Response(
         buf.read(),
         mimetype="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=osintph-dns-{domain}-{dt.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d')}.pdf"},
+        headers={"Content-Disposition": f"attachment; filename=threatwatch-dns-{domain}-{dt.now(timezone.utc).replace(tzinfo=None).strftime('%Y%m%d')}.pdf"},
     )
 
 
@@ -4562,7 +4597,7 @@ def proxy_threatfox():
     try:
         body = request.get_data()
         api_key = os.getenv("THREATFOX_API_KEY", "")
-        _hdrs = {"Content-Type": "application/json", "User-Agent": "OSINTPH/1.0"}
+        _hdrs = {"Content-Type": "application/json", "User-Agent": "ThreatWatch/1.0"}
         if api_key:
             _hdrs["Auth-Key"] = api_key
         _r = safe_fetch(
@@ -4597,7 +4632,7 @@ def proxy_urlhaus():
         _r = safe_fetch(
             "https://urlhaus-api.abuse.ch/v1/urls/recent/",
             method="POST",
-            headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "OSINTPH/1.0"},
+            headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "ThreatWatch/1.0"},
             data=b"limit=200",
             timeout=15,
         )
@@ -4648,7 +4683,7 @@ def whiteintel_alerts():
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Accept": "application/json",
-                "User-Agent": "OSINTPH/1.0",
+                "User-Agent": "ThreatWatch/1.0",
             },
         )
         status, body = _r["status"], _r["body"]
@@ -4680,7 +4715,7 @@ def whiteintel_search():
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Accept": "application/json",
-                "User-Agent": "OSINTPH/1.0",
+                "User-Agent": "ThreatWatch/1.0",
             },
         )
         status, body = _r["status"], _r["body"]
@@ -5150,12 +5185,24 @@ def api_ke_context_correlate():
 
     Returns a unified list ``[{source,title,snippet,url}]`` capped at 50, with
     priority: contextual_intel > cve > ioc > paste.
+
+    Matching is pushed to SQL (case-insensitive LIKE) so large tables are not
+    materialized and scanned in Python.
     """
     keyword = (request.args.get("keyword") or "").strip()
     if not keyword:
         return jsonify({"ok": False, "error": "keyword required"}), 400
     kw = keyword.lower()
+    kw_like = f"%{kw}%"
+
+    from sqlalchemy import func
+
+    from ..storage import ContextualIntel, CVE, ThreatIOC, PasteHit
+
     storage = get_storage()
+
+    def _ilike(col):
+        return func.lower(col).like(func.lower(kw_like))
 
     def _match(text: str) -> bool:
         return kw in str(text or "").lower()
@@ -5164,57 +5211,89 @@ def api_ke_context_correlate():
 
     # 1) contextual_intel (highest priority)
     try:
-        for r in (storage.get_contextual_intel(limit=10000) or []):
-            blob = " ".join([str(r.get("title") or ""), str(r.get("summary") or ""), str(r.get("source") or "")])
-            if _match(blob):
-                results.append({
-                    "source": "contextual_intel",
-                    "title": r.get("title") or "Untitled",
-                    "snippet": (r.get("summary") or "")[:220],
-                    "url": r.get("url") or None,
-                })
+        with storage.get_session() as sess:
+            rows = (
+                sess.query(ContextualIntel)
+                .filter(_ilike(ContextualIntel.title) | _ilike(ContextualIntel.summary) | _ilike(ContextualIntel.source))
+                .order_by(ContextualIntel.extracted_at.desc())
+                .limit(10000)
+                .all()
+            )
+            for r in rows:
+                blob = " ".join([str(r.title or ""), str(r.summary or ""), str(r.source or "")])
+                if _match(blob):
+                    results.append({
+                        "source": "contextual_intel",
+                        "title": r.title or "Untitled",
+                        "snippet": (r.summary or "")[:220],
+                        "url": r.url or None,
+                    })
     except Exception as exc:  # noqa: BLE001
         logger.warning("correlate contextual_intel failed: %s", exc)
 
     # 2) cve
     try:
-        for r in (storage.get_cves(limit=1000) or []):
-            blob = " ".join([str(r.get("cve_id") or ""), str(r.get("description") or "")])
-            if _match(blob):
-                results.append({
-                    "source": "cve",
-                    "title": r.get("cve_id") or "CVE",
-                    "snippet": (r.get("description") or "")[:220],
-                    "url": None,
-                })
+        with storage.get_session() as sess:
+            rows = (
+                sess.query(CVE)
+                .filter(_ilike(CVE.cve_id) | _ilike(CVE.description))
+                .order_by(CVE.created_at.desc())
+                .limit(1000)
+                .all()
+            )
+            for r in rows:
+                blob = " ".join([str(r.cve_id or ""), str(r.description or "")])
+                if _match(blob):
+                    results.append({
+                        "source": "cve",
+                        "title": r.cve_id or "CVE",
+                        "snippet": (r.description or "")[:220],
+                        "url": None,
+                    })
     except Exception as exc:  # noqa: BLE001
         logger.warning("correlate cve failed: %s", exc)
 
     # 3) threat_iocs (ioc.value == indicator)
     try:
-        for r in (storage.get_threat_iocs(limit=1000) or []):
-            blob = " ".join([str(r.get("indicator") or ""), str(r.get("threat_type") or ""), str(r.get("type") or "")])
-            if _match(blob):
-                results.append({
-                    "source": "ioc",
-                    "title": r.get("indicator") or "IOC",
-                    "snippet": (r.get("threat_type") or r.get("type") or "")[:220],
-                    "url": None,
-                })
+        with storage.get_session() as sess:
+            rows = (
+                sess.query(ThreatIOC)
+                .filter(_ilike(ThreatIOC.indicator) | _ilike(ThreatIOC.threat_type) | _ilike(ThreatIOC.type))
+                .order_by(ThreatIOC.date_added.desc())
+                .limit(1000)
+                .all()
+            )
+            for r in rows:
+                blob = " ".join([str(r.indicator or ""), str(r.threat_type or ""), str(r.type or "")])
+                if _match(blob):
+                    results.append({
+                        "source": "ioc",
+                        "title": r.indicator or "IOC",
+                        "snippet": (r.threat_type or r.type or "")[:220],
+                        "url": None,
+                    })
     except Exception as exc:  # noqa: BLE001
         logger.warning("correlate ioc failed: %s", exc)
 
-    # 4) paste_hits (lowest priority)
+    # 4) paste_hits (lowest priority) — bounded, was previously unbounded
     try:
-        for r in (storage.get_paste_hits() or []):
-            blob = " ".join([str(r.get("matched_value") or ""), str(r.get("context") or ""), str(r.get("url") or "")])
-            if _match(blob):
-                results.append({
-                    "source": "paste",
-                    "title": r.get("matched_value") or "Paste hit",
-                    "snippet": (r.get("context") or "")[:220],
-                    "url": r.get("url") or None,
-                })
+        with storage.get_session() as sess:
+            rows = (
+                sess.query(PasteHit)
+                .filter(_ilike(PasteHit.matched_value) | _ilike(PasteHit.context) | _ilike(PasteHit.url))
+                .order_by(PasteHit.found_at.desc())
+                .limit(5000)
+                .all()
+            )
+            for r in rows:
+                blob = " ".join([str(r.matched_value or ""), str(r.context or ""), str(r.url or "")])
+                if _match(blob):
+                    results.append({
+                        "source": "paste",
+                        "title": r.matched_value or "Paste hit",
+                        "snippet": (r.context or "")[:220],
+                        "url": r.url or None,
+                    })
     except Exception as exc:  # noqa: BLE001
         logger.warning("correlate paste_hits failed: %s", exc)
 

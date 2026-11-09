@@ -99,9 +99,9 @@ all = [
 darkweb-scanner = "darkweb_scanner.main:main"
 
 [project.urls]
-Homepage = "https://github.com/osintph/darkweb-scanner"
-Repository = "https://github.com/osintph/darkweb-scanner"
-Issues = "https://github.com/osintph/darkweb-scanner/issues"
+Homepage = "https://github.com/mwenda-cpu/kenyan-threatintelligence-platform"
+Repository = "https://github.com/mwenda-cpu/kenyan-threatintelligence-platform"
+Issues = "https://github.com/mwenda-cpu/kenyan-threatintelligence-platform/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

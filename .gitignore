@@ -17,3 +17,6 @@ Caddyfile
 src/*.egg-info
 *.egg-info/
 clean_db.sql
+
+# AI workspace — temporary Kilo Agent Manager worktrees, never commit
+.kilo/

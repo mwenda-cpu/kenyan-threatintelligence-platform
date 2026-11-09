@@ -4,7 +4,7 @@ set -euo pipefail
 DOMAIN="${DOMAIN:-}"
 SSL_EMAIL="${SSL_EMAIL:-}"
 WWW_DOMAIN="${WWW_DOMAIN:-}"
-THREATWATCH_DOMAIN="${THREATWATCH_DOMAIN:-}"   # NEW: threatwatch.osintph.info
+THREATWATCH_DOMAIN="${THREATWATCH_DOMAIN:-}"   # NEW: threatwatch.ke
 CERT_DIR="/etc/nginx/certs"
 mkdir -p "$CERT_DIR"
 
@@ -21,7 +21,7 @@ write_nginx_config() {
   cat > /etc/nginx/conf.d/app_vhost.conf <<EOF
 server {
     listen 80;
-    server_name threatwatch.osintph.info localhost 127.0.0.1;
+    server_name threatwatch.ke localhost 127.0.0.1;
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
     location / {
         proxy_pass http://dashboard:8080;
@@ -70,14 +70,14 @@ EOF
     cat >> /etc/nginx/conf.d/app_vhost.conf <<EOF
 server {
     listen 80;
-    server_name ${WWW_DOMAIN} www.${WWW_DOMAIN} osintph.net www.osintph.net;
+    server_name ${WWW_DOMAIN} www.${WWW_DOMAIN} www.threatwatch.ke;
     location /.well-known/acme-challenge/ { root /var/www/certbot; }
     if (\$http_x_forwarded_proto != "https") { return 301 https://\$host\$request_uri; }
     location / { return 301 https://\$host\$request_uri; }
 }
 server {
     listen 443 ssl;
-    server_name ${WWW_DOMAIN} www.${WWW_DOMAIN} osintph.net www.osintph.net;
+    server_name ${WWW_DOMAIN} www.${WWW_DOMAIN} www.threatwatch.ke;
     ssl_certificate     $CERT_DIR/www-cert.pem;
     ssl_certificate_key $CERT_DIR/www-key.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -89,7 +89,7 @@ server {
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    root /var/www/osintph-www;
+    root /var/www/threatwatch-www;
     index index.html;
     location / { try_files \$uri \$uri/ /index.html; }
     location ~* \.(svg|png|jpg|jpeg|gif|ico|webp|woff2?)$ {

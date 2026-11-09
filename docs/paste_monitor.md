@@ -12,11 +12,11 @@ Every 3–10 minutes (depending on source), the monitor fetches each site's rece
 |---------|-------------|---------|
 | `ph_mobile` | Philippine mobile numbers | `+639171234567`, `09171234567` |
 | `ph_domain` | Any `.ph` domain mention | `bdo.com.ph`, `dlsu.edu.ph` |
-| `ph_gov_domain` | Government domains | `bsp.gov.ph`, `dict.gov.ph` |
+| `ke_gov_domain` | Government domains | `kra.go.ke`, `ict.go.ke` |
 | `ph_bank` | Philippine bank names | BDO, BPI, Metrobank, UnionBank, RCBC, Landbank, PNB, Security Bank, EastWest, PSBank, Chinabank |
 | `ph_sss` | SSS number format | `33-1234567-8` |
 | `ph_tin` | Tax Identification Number | `123-456-789`, `123-456-789-000` |
-| `ph_philhealth` | PhilHealth number | `01-234567890-1` |
+| `ke_kra_pin` | KRA PIN | `A123456789Z` |
 | `ph_card_bin` | PH-issued card BINs | First 6 digits matching known PH-issued Visa/Mastercard ranges |
 | `ph_postal` | Philippines/Pilipinas mentions | `Philippines`, `Pilipinas` |
 

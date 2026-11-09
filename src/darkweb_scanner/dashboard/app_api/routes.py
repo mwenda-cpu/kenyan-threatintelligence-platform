@@ -23,6 +23,7 @@ from .. import storage_helper as _storage_helper
 from . import ti_api
 from .audit import write_audit
 from .auth import require_api_key
+from ...auth import require_login
 from .schemas import serialize_hit, serialize_ioc, serialize_session
 
 # Sector keyword lists used by the ?sector= filter on /api/v1/threats.
@@ -254,7 +255,7 @@ def session_hits(session_id):
 
 
 @ti_api.route("/threats", methods=["GET"])
-@require_api_key
+@require_login
 def list_threats():
     storage = get_storage()
     keyword = request.args.get("keyword")
@@ -513,7 +514,7 @@ def alerts_test():
 
 
 @ti_api.route("/fintech/watchlist", methods=["POST"])
-@require_api_key
+@require_login
 def fintech_watchlist():
     """Add an entry to the fintech watchlist."""
     storage = get_storage()
@@ -552,7 +553,7 @@ def fintech_watchlist():
 
 
 @ti_api.route("/fintech/lookup", methods=["GET"])
-@require_api_key
+@require_login
 def fintech_lookup():
     """Look up whether an identifier is on the fintech watchlist."""
     storage = get_storage()
@@ -581,7 +582,7 @@ def fintech_lookup():
 
 
 @ti_api.route("/fintech/watchlist", methods=["GET"])
-@require_api_key
+@require_login
 def fintech_watchlist_list():
     """List all fintech watchlist entries."""
     storage = get_storage()

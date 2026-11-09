@@ -147,7 +147,7 @@ def _enum_path(url: str, timeout: float = 10.0) -> Optional[int]:
             url,
             proxies=TOR_PROXY,
             timeout=timeout,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; OSINTPH-Scanner/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; ThreatWatch-Scanner/1.0)"},
             allow_redirects=False,
         )
         logger.debug("[scan_engine] %s -> %d", url, resp.status_code)
