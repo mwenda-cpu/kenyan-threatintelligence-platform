@@ -25,8 +25,8 @@ import time
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
-import requests as _requests
 import certifi
+import requests as _requests
 
 logger = logging.getLogger(__name__)
 

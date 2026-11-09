@@ -222,7 +222,7 @@ def api_cve_correlate():
 def api_stats():
     try:
         return jsonify(get_storage().get_stats())
-    except Exception as e:
+    except Exception:
         logger.exception("/api/stats failed")
         return jsonify({"error": "stats unavailable"}), 500
 
@@ -910,7 +910,7 @@ def api_crawl_status():
             "session": session_data,
             "stats": stats,
         })
-    except Exception as e:
+    except Exception:
         logger.exception("/api/crawl/status failed")
         return jsonify({"status": "idle", "active": False, "session": None, "stats": {}}), 200
 
@@ -5197,7 +5197,7 @@ def api_ke_context_correlate():
 
     from sqlalchemy import func
 
-    from ..storage import ContextualIntel, CVE, ThreatIOC, PasteHit
+    from ..storage import CVE, ContextualIntel, PasteHit, ThreatIOC
 
     storage = get_storage()
 

@@ -1,29 +1,5 @@
 """Exposure intelligence helpers for Shodan, URLScan, and GreyNoise."""
 
-import json
-import logging
-import os
-
-try:
-    from dotenv import load_dotenv
-
-    load_dotenv()
-except Exception:
-    pass
-
-import requests as _requests
-
-from .dashboard.http_client import safe_fetch
-
-logger = logging.getLogger(__name__)
-
-
-def _api_key(name):
-    return (os.getenv(name) or "").strip()
-
-
-"""Exposure intelligence helpers for Shodan, URLScan, and GreyNoise."""
-
 import ipaddress
 import json
 import logging

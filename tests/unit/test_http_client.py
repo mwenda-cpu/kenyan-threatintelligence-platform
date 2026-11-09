@@ -16,6 +16,7 @@ Covers:
 import socket
 from unittest.mock import MagicMock, patch
 
+import certifi
 import pytest
 
 from darkweb_scanner.dashboard.http_client import (
@@ -165,8 +166,8 @@ def test_tls_verify_true():
 
     mock_req.assert_called_once()
     call_kwargs = mock_req.call_args[1]
-    assert call_kwargs.get("verify") is True, (
-        f"verify={call_kwargs.get('verify')!r} — must be True"
+    assert call_kwargs.get("verify") == certifi.where(), (
+        f"verify={call_kwargs.get('verify')!r} — must be certifi.where()"
     )
 
 

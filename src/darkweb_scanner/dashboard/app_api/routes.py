@@ -10,6 +10,7 @@ from pathlib import Path
 import requests
 from flask import jsonify, request, send_file
 
+from ...auth import require_login
 from ...exposure_intel import shodan_search, urlscan_search
 from ...storage import (
     AuditLog,
@@ -23,7 +24,6 @@ from .. import storage_helper as _storage_helper
 from . import ti_api
 from .audit import write_audit
 from .auth import require_api_key
-from ...auth import require_login
 from .schemas import serialize_hit, serialize_ioc, serialize_session
 
 # Sector keyword lists used by the ?sector= filter on /api/v1/threats.
